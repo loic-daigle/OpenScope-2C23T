@@ -495,15 +495,17 @@ static void test_editor_leading_zeros(void) {
     assert(editor_dim_digits("0", 1) == 0);
     assert(editor_dim_digits(0, 4) == 0);
 
-    // The faded colour has to sit between the text and its background,
-    // channel by channel, or it would stand out rather than recede.
+    // Blended colours (anti-aliasing, tints) have to sit between the two
+    // inputs, channel by channel, and blending a colour with itself or at
+    // full strength must give it back unchanged.
     uint16_t fg = RGB565(255, 255, 255);
     uint16_t bg = RGB565(30, 30, 45);
-    uint16_t dim = color_mix(fg, bg);
+    uint16_t dim = gfx_blend(fg, bg, 8);
     assert((dim >> 11) < (fg >> 11) && (dim >> 11) > (bg >> 11));
     assert(((dim >> 5) & 0x3Fu) < ((fg >> 5) & 0x3Fu));
     assert(((dim >> 5) & 0x3Fu) > ((bg >> 5) & 0x3Fu));
-    assert(color_mix(fg, fg) == fg);
+    assert(gfx_blend(fg, fg, 8) == fg);
+    assert(gfx_blend(fg, bg, 16) == fg && gfx_blend(fg, bg, 0) == bg);
 }
 
 // A factory reset throws away the calibration as well as the preferences,

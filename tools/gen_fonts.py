@@ -27,7 +27,7 @@ ICONS = ["check_xl", "zap_xl", "alert_sm", "beep_sm", "pause_sm", "plug_sm", "ch
          "multimeter_md", "scope_md", "generator_md", "settings_md", "chevron_l_sm", "chevron_r_sm",
          "playpause_sm", "move_sm", "beep_md", "display_md", "start_md", "sleep_md", "export_md",
          "reset_md", "info_md", "storage_sm", "ok_md", "error_md",
-         "edge_rise_sm", "edge_fall_sm"]
+         "edge_rise_sm", "edge_fall_sm", "scope_sm", "generator_sm"]
 
 ASCII = "".join(chr(c) for c in range(32, 127))
 EXTRA = "Ωµ°Δ"  # Ohm, micro, degree, Delta

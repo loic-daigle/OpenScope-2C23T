@@ -771,9 +771,6 @@ static uint32_t scope_vdiv_mv(void);
 static int32_t scope_raw_delta_mv(uint8_t idx, uint8_t raw);
 static void scope_format_signed_mv(char out[11], int32_t mv);
 static void scope_format_u32(char *out, uint32_t value);
-static void draw_digit_field(uint16_t x, uint16_t y, uint32_t value,
-                             uint8_t editing, uint8_t edit_index,
-                             const char *unit, uint16_t fg, uint16_t bg);
 static uint16_t scope_visible_sample_count(void);
 static int32_t scope_h_pos_sample_offset(void);
 static uint16_t scope_capture_window_start(void);
@@ -1648,28 +1645,116 @@ static void math_menu_step_selected(int8_t dir) {
     }
 }
 
+
+// ---------------------------------------------------------------------------
+// Shared helpers for the modern scope overlays and list menus.
+// ---------------------------------------------------------------------------
+
+static void scope_pretty_value(const char *in, char *out, uint8_t size);
+static void ui_text_append(char *dst, const char *src, uint8_t max_len);
+static uint8_t editor_dim_digits(const char *digits, uint8_t count);
+static void ui_text_copy(char *dst, const char *src, uint8_t max_len);
+static uint16_t scope_tint(uint16_t color, uint16_t under);
+static uint16_t scope_pill_width(const char *label, const char *value);
+static void scope_draw_pill(int16_t x, uint16_t y, const char *label, const char *value,
+                            uint16_t fill, uint16_t label_fg, uint16_t value_fg, uint16_t under);
+
+// A label on the plot: small smooth type, units spaced and cased.
+static void scope_plot_label(int16_t x, int16_t y, const char *text, uint16_t color) {
+    char pretty[20];
+    scope_pretty_value(text, pretty, sizeof(pretty));
+    gfx_text(x, (int16_t)(y - 2), &font_small, pretty, color, D_PLOT);
+}
+
+static void scope_plot_label_right(int16_t right, int16_t y, const char *text, uint16_t color) {
+    char pretty[20];
+    scope_pretty_value(text, pretty, sizeof(pretty));
+    gfx_text_right(right, (int16_t)(y - 2), &font_small, pretty, color, D_PLOT);
+}
+
+static void ui_draw_editor_digits(int16_t x, uint16_t y, const char *digits, uint8_t count,
+                                  int8_t selected, uint8_t dim, uint16_t accent, uint16_t fg, uint16_t bg);
+
+// Modern list panel: a rounded card with a title row and value rows. Used
+// by the scope's Analytical/Math menu and the generator's Sweep/FM menu.
+enum {
+    UI_LIST_X = 28,
+    UI_LIST_W = 264,
+    UI_LIST_ROW_H = 19,
+    UI_LIST_HEAD_H = 32,
+};
+
+static uint16_t ui_list_begin(const char *title, const char *icon, uint16_t accent, uint16_t tint, uint8_t rows) {
+    uint16_t h = (uint16_t)(UI_LIST_HEAD_H + rows * UI_LIST_ROW_H + 8u);
+    uint16_t y = (uint16_t)((LCD_HEIGHT - h) / 2u + 4u);
+    gfx_round_rect(UI_LIST_X - 4u, (uint16_t)(y - 4u), UI_LIST_W + 8u, (uint16_t)(h + 8u), 18, D_BG, D_BG);
+    gfx_round_rect(UI_LIST_X, y, UI_LIST_W, h, 14, accent, D_BG);
+    gfx_round_rect(UI_LIST_X + 2u, (uint16_t)(y + 2u), UI_LIST_W - 4u, (uint16_t)(h - 4u), 12, D_CARD, accent);
+    gfx_round_rect(UI_LIST_X + 10u, (uint16_t)(y + 8u), 20, 20, 6, tint, D_CARD);
+    gfx_text((int16_t)(UI_LIST_X + 14u), (int16_t)(y + 12u), &font_icons, icon, accent, tint);
+    gfx_text(UI_LIST_X + 38, (int16_t)(y + 9u), &font_medium, title, D_TEXT, D_CARD);
+    return (uint16_t)(y + UI_LIST_HEAD_H);
+}
+
+// One row; returns the row's fill so a caller can draw a custom value.
+static uint16_t ui_list_row(uint16_t y, const char *label, const char *value,
+                            uint8_t selected, uint8_t enabled, uint16_t accent) {
+    uint16_t fill = selected ? gfx_blend(accent, D_CARD, 4) : D_CARD;
+    uint16_t label_fg = !enabled ? D_TRACK : (selected ? D_TEXT : D_MUTED);
+    uint16_t value_fg = !enabled ? D_TRACK : (selected ? accent : D_SUB);
+    if (selected) {
+        gfx_round_rect(UI_LIST_X + 8u, y, UI_LIST_W - 16u, UI_LIST_ROW_H - 2u, 6, fill, D_CARD);
+    }
+    gfx_text(UI_LIST_X + 16, (int16_t)(y + 1u), &font_medium, label, label_fg, fill);
+    if (value) {
+        gfx_text_right(UI_LIST_X + UI_LIST_W - 16, (int16_t)(y + 1u), &font_medium, value, value_fg, fill);
+    }
+    return fill;
+}
+
+// A four-digit number and unit, right-aligned in a row, editable digit by
+// digit (edit_index 4 is the unit).
+static void ui_list_digits(uint16_t y, uint32_t value, uint8_t editing, uint8_t edit_index,
+                           const char *unit, uint8_t selected, uint8_t enabled, uint16_t accent, uint16_t fill) {
+    char digits[5];
+    uint16_t adv = gfx_text_width(&font_medium, "0");
+    uint16_t unit_w = unit ? (uint16_t)(gfx_text_width(&font_medium, unit) + 4u) : 0u;
+    int16_t x = (int16_t)(UI_LIST_X + UI_LIST_W - 16 - (int16_t)(adv * 4u + unit_w));
+    uint16_t fg = !enabled ? D_TRACK : (selected ? accent : D_SUB);
+
+    digits[0] = (char)('0' + ((value / 1000u) % 10u));
+    digits[1] = (char)('0' + ((value / 100u) % 10u));
+    digits[2] = (char)('0' + ((value / 10u) % 10u));
+    digits[3] = (char)('0' + (value % 10u));
+    digits[4] = 0;
+    ui_draw_editor_digits(x, (uint16_t)(y + 1u), digits, 4, editing && edit_index < 4u ? (int8_t)edit_index : -1,
+                          editor_dim_digits(digits, 4), accent, fg, fill);
+    if (unit) {
+        int16_t ux = (int16_t)(x + (int16_t)(adv * 4u) + 4);
+        if (editing && edit_index == 4u) {
+            gfx_round_rect((uint16_t)(ux - 2), (uint16_t)(y + 1u), (uint16_t)(unit_w), 16, 4, accent, fill);
+            gfx_text(ux, (int16_t)(y + 1u), &font_medium, unit, D_BG, accent);
+        } else {
+            gfx_text(ux, (int16_t)(y + 1u), &font_medium, unit, fg, fill);
+        }
+    }
+}
+
 static void ui_draw_math_menu(void) {
+    static const char *const math_status_text[] = {"Off", "On"};
+    static const char *const math_op_text[] = {"CH1 + CH2", "CH1 - CH2", "CH2 - CH1"};
+    static const char *const fft_status_text[] = {"Normal", "FFT CH1", "FFT CH2", "X-Y", "Bode plot"};
+    static const char *const fft_window_text[] = {"Hann", "Hamming", "Blackman", "Rectangle"};
+    static const char *const fft_display_text[] = {"Normal", "Averaging", "Max hold"};
+    static const char *const hide_traces_text[] = {"None", "CH1", "CH2", "All"};
+    const uint8_t *menu;
+    uint8_t rows;
+    uint8_t fft_on = (uint8_t)(scope_fft_src == 1u || scope_fft_src == 2u);
+    uint16_t y;
+
     if (!ui_math_menu_visible) {
         return;
     }
-
-    const char *math_status_text[] = { "OFF", "ON" };
-    const char *math_op_text[]     = { "CH1 + CH2", "CH1 - CH2", "CH2 - CH1" };
-    const char *fft_status_text[]  = { "OFF", "FFT CH1", "FFT CH2", "XY MODE", "BODE PLOT" };
-    const char *fft_window_text[]  = { "HANN", "HAMMING", "BLACKMAN", "RECTANGLE" };
-    const char *fft_display_text[] = { "NORMAL", "AVERAGING", "MAX HOLD" };
-    const char *hide_traces_text[] = { "NONE", "CH1", "CH2", "ALL" };
-
-    const uint8_t *menu;
-    uint8_t rows;
-
-    uint16_t box_x = 50;
-    uint16_t box_y = 60;
-    uint16_t box_w = 220;
-    uint16_t row_y;
-    uint16_t color_bg;
-    uint16_t color_fg;
-
     if (scope_fft_src == 4u) {
         menu = bode_menu_order;
         rows = sizeof(bode_menu_order) / sizeof(bode_menu_order[0]);
@@ -1678,115 +1763,51 @@ static void ui_draw_math_menu(void) {
         rows = sizeof(math_menu_order) / sizeof(math_menu_order[0]);
     }
 
-    uint16_t box_h = (uint16_t)(36u + rows * 18u);
-
-    // Draw menu background and frame
-    lcd_rect(box_x, box_y, box_w, box_h, RGB565(30, 30, 45));
-    lcd_frame(box_x, box_y, box_w, box_h, RGB565(255, 165, 0));
-
-    lcd_text(box_x + 10, box_y + 8, "MATH / BODE MENU", RGB565(255, 255, 255), RGB565(30, 30, 45), 1);
-    lcd_rect(box_x + 10, box_y + 20, box_w - 20, 1, RGB565(100, 100, 100));
-
-    row_y = box_y + 26;
-
-    for (uint8_t row = 0; row < rows; row++) {
-        uint8_t item = menu[row];
-
-        color_bg = (scope_math_selected == row) ? RGB565(0, 120, 240) : RGB565(30, 30, 45);
-        color_fg = RGB565(255, 255, 255);
-
-        lcd_rect(box_x + 8, row_y, box_w - 16, 14, color_bg);
-
-        switch (item) {
-            case MENU_ITEM_PLOT:
-                lcd_text(box_x + 12, row_y + 3, "PLOT MODE:", color_fg, color_bg, 1);
-                lcd_text(box_x + 110, row_y + 3, fft_status_text[scope_fft_src], color_fg, color_bg, 1);
-                break;
-
-            case MENU_ITEM_FFT_WINDOW:
-                if (scope_fft_src != 1 && scope_fft_src != 2) color_fg = RGB565(120, 120, 120);
-                lcd_text(box_x + 12, row_y + 3, "FFT WINDOW:", color_fg, color_bg, 1);
-                lcd_text(box_x + 110, row_y + 3, fft_window_text[scope_fft_window], color_fg, color_bg, 1);
-                break;
-
-            case MENU_ITEM_FFT_DISPLAY:
-                if (scope_fft_src != 1 && scope_fft_src != 2) color_fg = RGB565(120, 120, 120);
-                lcd_text(box_x + 12, row_y + 3, "FFT DISPLAY:", color_fg, color_bg, 1);
-                lcd_text(box_x + 110, row_y + 3, fft_display_text[scope_fft_display], color_fg, color_bg, 1);
-                break;
-
-            case MENU_ITEM_MATH_MODE:
-                lcd_text(box_x + 12, row_y + 3, "MATH MODE:", color_fg, color_bg, 1);
-                lcd_text(box_x + 110, row_y + 3, math_status_text[scope_math_mode], color_fg, color_bg, 1);
-                break;
-
-            case MENU_ITEM_MATH_OP:
-                if (!scope_math_mode) color_fg = RGB565(120, 120, 120);
-                lcd_text(box_x + 12, row_y + 3, "MATH OP:", color_fg, color_bg, 1);
-                lcd_text(box_x + 110, row_y + 3, math_op_text[scope_math_op], color_fg, color_bg, 1);
-                break;
-
-            case MENU_ITEM_HIDE_TRACES:
-                lcd_text(box_x + 12, row_y + 3, "HIDE TRACES:", color_fg, color_bg, 1);
-                lcd_text(box_x + 110, row_y + 3, hide_traces_text[scope_hide_traces], color_fg, color_bg, 1);
-                break;
-
-            case MENU_ITEM_BODE_START:
-                lcd_text(box_x + 12, row_y + 3, "START FREQ:", color_fg, color_bg, 1);
-                draw_digit_field((uint16_t)(box_x + 110), (uint16_t)(row_y + 3),
-                                 freq_clamp_display(bode_start_hz, bode_start_unit),
-                                 (uint8_t)(ui_edit_digit_active && scope_math_selected == row),
-                                 ui_edit_digit_index,
-                                 freq_unit_labels[bode_start_unit < 3u ? bode_start_unit : 0u],
-                                 color_fg, color_bg);
-                break;
-
-            case MENU_ITEM_BODE_STOP:
-                lcd_text(box_x + 12, row_y + 3, "STOP FREQ:", color_fg, color_bg, 1);
-                draw_digit_field((uint16_t)(box_x + 110), (uint16_t)(row_y + 3),
-                                 freq_clamp_display(bode_stop_hz, bode_stop_unit),
-                                 (uint8_t)(ui_edit_digit_active && scope_math_selected == row),
-                                 ui_edit_digit_index,
-                                 freq_unit_labels[bode_stop_unit < 3u ? bode_stop_unit : 0u],
-                                 color_fg, color_bg);
-                break;
-
-            case MENU_ITEM_BODE_STEPS:
-                lcd_text(box_x + 12, row_y + 3, "STEPS:", color_fg, color_bg, 1);
-                {
-                    char steps_digits[5];
-                    steps_digits[0] = (char)('0' + ((bode_steps / 1000) % 10));
-                    steps_digits[1] = (char)('0' + ((bode_steps / 100) % 10));
-                    steps_digits[2] = (char)('0' + ((bode_steps / 10) % 10));
-                    steps_digits[3] = (char)('0' + (bode_steps % 10));
-                    steps_digits[4] = '\0';
-
-                    if (ui_edit_digit_active && scope_math_selected == row) {
-                        for (uint8_t d = 0; d < 4u; ++d) {
-                            uint16_t dx = (uint16_t)(box_x + 110 + (d * 6));
-                            char d_str[2] = { steps_digits[d], '\0' };
-                            if (d == ui_edit_digit_index) {
-                                lcd_rect(dx, (uint16_t)(row_y + 2), 6, 10, RGB565(255, 255, 255));
-                                lcd_text(dx, row_y + 3, d_str, RGB565(0, 120, 240), RGB565(255, 255, 255), 1);
-                            } else {
-                                lcd_text(dx, row_y + 3, d_str, color_fg, color_bg, 1);
-                            }
-                        }
-                    } else {
-                        lcd_text(box_x + 110, row_y + 3, steps_digits, color_fg, color_bg, 1);
-                    }
-                }
-                break;
-
-            case MENU_ITEM_BODE_SWEEP:
-                lcd_text(box_x + 12, row_y + 3, "SWEEP:", color_fg, color_bg, 1);
-                lcd_text(box_x + 110, row_y + 3, bode_is_sweeping ? "RUNNING" : "RE-SWEEP", color_fg, color_bg, 1);
-                break;
+    y = ui_list_begin(scope_fft_src == 4u ? "Bode plot" : "Analytical / Math", ICON_SCOPE_SM, D_SCOPE,
+                      gfx_blend(D_SCOPE, D_CARD, 4), rows);
+    for (uint8_t row = 0; row < rows; ++row, y = (uint16_t)(y + UI_LIST_ROW_H)) {
+        uint8_t sel = scope_math_selected == row;
+        uint8_t editing = (uint8_t)(ui_edit_digit_active && sel);
+        uint16_t fill;
+        switch (menu[row]) {
+        case MENU_ITEM_PLOT:
+            ui_list_row(y, "Plot", fft_status_text[scope_fft_src], sel, 1, D_SCOPE);
+            break;
+        case MENU_ITEM_FFT_WINDOW:
+            ui_list_row(y, "FFT window", fft_window_text[scope_fft_window], sel, fft_on, D_SCOPE);
+            break;
+        case MENU_ITEM_FFT_DISPLAY:
+            ui_list_row(y, "FFT display", fft_display_text[scope_fft_display], sel, fft_on, D_SCOPE);
+            break;
+        case MENU_ITEM_MATH_MODE:
+            ui_list_row(y, "Math", math_status_text[scope_math_mode ? 1 : 0], sel, 1, D_SCOPE);
+            break;
+        case MENU_ITEM_MATH_OP:
+            ui_list_row(y, "Operation", math_op_text[scope_math_op], sel, scope_math_mode, D_SCOPE);
+            break;
+        case MENU_ITEM_HIDE_TRACES:
+            ui_list_row(y, "Hide traces", hide_traces_text[scope_hide_traces], sel, 1, D_SCOPE);
+            break;
+        case MENU_ITEM_BODE_START:
+            fill = ui_list_row(y, "Start freq", 0, sel, 1, D_SCOPE);
+            ui_list_digits(y, freq_clamp_display(bode_start_hz, bode_start_unit), editing, ui_edit_digit_index,
+                           freq_unit_labels[bode_start_unit < 3u ? bode_start_unit : 0u], sel, 1, D_SCOPE, fill);
+            break;
+        case MENU_ITEM_BODE_STOP:
+            fill = ui_list_row(y, "Stop freq", 0, sel, 1, D_SCOPE);
+            ui_list_digits(y, freq_clamp_display(bode_stop_hz, bode_stop_unit), editing, ui_edit_digit_index,
+                           freq_unit_labels[bode_stop_unit < 3u ? bode_stop_unit : 0u], sel, 1, D_SCOPE, fill);
+            break;
+        case MENU_ITEM_BODE_STEPS:
+            fill = ui_list_row(y, "Steps", 0, sel, 1, D_SCOPE);
+            ui_list_digits(y, bode_steps, editing, ui_edit_digit_index, 0, sel, 1, D_SCOPE, fill);
+            break;
+        case MENU_ITEM_BODE_SWEEP:
+            ui_list_row(y, "Sweep", bode_is_sweeping ? "Running" : "Start again", sel, 1, D_SCOPE);
+            break;
         }
-        row_y += 18u;
     }
 }
-
 
 static void ui_draw_fft_spectrum(uint16_t gx, uint16_t gy, uint16_t gw, uint16_t gh) {
     if (scope_fft_src != 1u && scope_fft_src != 2u) {
@@ -1887,24 +1908,17 @@ static void ui_draw_fft_spectrum(uint16_t gx, uint16_t gy, uint16_t gw, uint16_t
     float f_max_hz = sample_rate_hz / 2.0f;
     float hz_per_bin = sample_rate_hz / (float)FFT_SIZE;
 
-    uint16_t bar_color = RGB565(0, 180, 255);
-    uint16_t axis_color = RGB565(150, 150, 150);
-    uint16_t text_bg = RGB565(30, 30, 45);
+    uint16_t bar_color = target_ch ? C_CH2 : C_CH1;
+    uint16_t axis_color = D_PLOT_AXIS;
     uint16_t y_bottom = (uint16_t)(gy + gh - 2u);
     uint16_t y_axis_top = (uint16_t)(gy + 2u);
     char freq_label[12];
 
     lcd_line(gx, y_axis_top, (uint16_t)(gx + gw), y_axis_top, axis_color);
-    lcd_text(gx, (uint16_t)(y_axis_top + 4u), "0.0Hz", RGB565(180, 180, 180), text_bg, 1);
+    scope_plot_label((int16_t)(gx + 6u), (int16_t)(y_axis_top + 4u), "0 Hz", D_MUTED);
 
     scope_format_frequency_reading(freq_label, (uint32_t)(f_max_hz + 0.5f));
-    uint16_t fw = lcd_text_width(freq_label, 1);
-    lcd_text(gx + gw > fw ? (uint16_t)(gx + gw - fw) : gx,
-             (uint16_t)(y_axis_top + 4u),
-             freq_label,
-             RGB565(180, 180, 180),
-             text_bg,
-             1);
+    scope_plot_label_right((int16_t)(gx + gw - 6u), (int16_t)(y_axis_top + 4u), freq_label, D_MUTED);
 
     for (uint16_t i = 1u; i < num_bins; ++i) {
         uint16_t x_pos = (uint16_t)(gx + ((uint32_t)i * gw) / num_bins);
@@ -1918,18 +1932,14 @@ static void ui_draw_fft_spectrum(uint16_t gx, uint16_t gy, uint16_t gw, uint16_t
     }
 
     scope_format_frequency_reading(freq_label, (uint32_t)((float)peak_bin * hz_per_bin + 0.5f));
-    lcd_text((uint16_t)(gx + gw / 2u - 30u),
-             (uint16_t)(y_axis_top + 4u),
-             "PK",
-             RGB565(255, 255, 0),
-             text_bg,
-             1);
-    lcd_text((uint16_t)(gx + gw / 2u - 12u),
-             (uint16_t)(y_axis_top + 4u),
-             freq_label,
-             RGB565(255, 255, 0),
-             text_bg,
-             1);
+    {
+        char pretty[20];
+        uint16_t w;
+        scope_pretty_value(freq_label, pretty, sizeof(pretty));
+        w = scope_pill_width("Peak", pretty);
+        scope_draw_pill((int16_t)(gx + (gw - w) / 2u), (uint16_t)(y_axis_top + 3u), "Peak", pretty,
+                        scope_tint(D_AMBER, D_PLOT), D_AMBER, D_TEXT, D_PLOT);
+    }
 }
 
 static float fast_ln(float x) {
@@ -2326,10 +2336,9 @@ static void ui_draw_bode(uint16_t gx, uint16_t gy, uint16_t gw, uint16_t gh) {
     uint16_t mag_h;
     uint16_t phase_y;
     uint16_t phase_h;
-    uint16_t axis_color = RGB565(150, 150, 150);
-    uint16_t text_bg = RGB565(30, 30, 45);
-    uint16_t mag_color = RGB565(0, 180, 255);
-    uint16_t phase_color = RGB565(255, 180, 40);
+    uint16_t axis_color = D_PLOT_AXIS;
+    uint16_t mag_color = D_ACCENT;
+    uint16_t phase_color = D_AMBER;
     uint8_t completed;
     uint8_t steps = bode_clamp_steps(bode_steps);
     char label[16];
@@ -2359,23 +2368,19 @@ static void ui_draw_bode(uint16_t gx, uint16_t gy, uint16_t gw, uint16_t gh) {
     uint16_t phase_center_y = (uint16_t)(phase_y + (phase_h / 2u));
     lcd_line(x_start, phase_center_y, x_end, phase_center_y, axis_color);
     lcd_line(x_start, (uint16_t)(phase_y + phase_h), x_end, (uint16_t)(phase_y + phase_h), axis_color);
-    lcd_text(gx, (uint16_t)(gy + 2u), "MAG", RGB565(180, 180, 180), text_bg, 1);
-    lcd_text((uint16_t)(gx + gw - 46u), (uint16_t)(gy + 2u), "+20DB", RGB565(140, 140, 140), text_bg, 1);
-    lcd_text((uint16_t)(gx + gw - 34u), (uint16_t)(mag_0db_y - 4u), "0DB", RGB565(140, 140, 140), text_bg, 1);
-    lcd_text(gx, (uint16_t)(gy + mag_h - 5u), "-60", RGB565(140, 140, 140), text_bg, 1);
-    lcd_text(gx, (uint16_t)(phase_y + 2u), "PHASE", RGB565(180, 180, 180), text_bg, 1);
-    lcd_text((uint16_t)(gx + gw - 40u), (uint16_t)(phase_y + 2u), "+180", RGB565(140, 140, 140), text_bg, 1);
-    lcd_text(gx, (uint16_t)(phase_center_y - 4u), "0", RGB565(140, 140, 140), text_bg, 1);
-    lcd_text(gx, (uint16_t)(phase_y + phase_h - 10u), "-180", RGB565(140, 140, 140), text_bg, 1);
+    scope_plot_label((int16_t)(gx + 6u), (int16_t)(gy + 4u), "GAIN", mag_color);
+    scope_plot_label_right((int16_t)(gx + gw - 6u), (int16_t)(gy + 4u), "+20DB", D_MUTED);
+    scope_plot_label_right((int16_t)(gx + gw - 6u), (int16_t)(mag_0db_y + 4u), "0DB", D_MUTED);
+    scope_plot_label((int16_t)(gx + 6u), (int16_t)(gy + mag_h - 12u), "-60 dB", D_MUTED);
+    scope_plot_label((int16_t)(gx + 6u), (int16_t)(phase_y + 3u), "PHASE", phase_color);
+    scope_plot_label_right((int16_t)(gx + gw - 6u), (int16_t)(phase_y + 3u), "+180", D_MUTED);
+    scope_plot_label((int16_t)(gx + 6u), (int16_t)(phase_center_y - 12u), "0", D_MUTED);
+    scope_plot_label((int16_t)(gx + 6u), (int16_t)(phase_y + phase_h - 12u), "-180", D_MUTED);
 
     scope_format_frequency_reading(label, bode_start_hz);
-    lcd_text((uint16_t)(gx + 28u), (uint16_t)(gy + mag_h - 10u), label, RGB565(180, 180, 180), text_bg, 1);
+    scope_plot_label((int16_t)(gx + 52u), (int16_t)(gy + mag_h - 12u), label, D_SUB);
     scope_format_frequency_reading(label, bode_stop_hz);
-    lcd_text((uint16_t)(gx + gw - 56u), (uint16_t)(gy + mag_h - 10u), label, RGB565(180, 180, 180), text_bg, 1);
-    // scope_format_frequency_reading(label, bode_start_hz);
-    // lcd_text((uint16_t)(gx + 28u), (uint16_t)(phase_y + phase_h - 10u), label, RGB565(180, 180, 180), text_bg, 1);
-    // scope_format_frequency_reading(label, bode_stop_hz);
-    // lcd_text((uint16_t)(gx + gw - 56u), (uint16_t)(phase_y + phase_h - 10u), label, RGB565(180, 180, 180), text_bg, 1);
+    scope_plot_label_right((int16_t)(gx + gw - 6u), (int16_t)(gy + mag_h - 12u), label, D_SUB);
 
     for (i = 1; i < completed; ++i) {
         uint16_t x0 = (uint16_t)(gx + ((uint32_t)(i - 1u) * gw) / (uint32_t)(steps - 1u));
@@ -2390,23 +2395,18 @@ static void ui_draw_bode(uint16_t gx, uint16_t gy, uint16_t gw, uint16_t gh) {
 
     if (bode_is_sweeping) {
         char progress[20];
-        progress[0] = 'B';
-        progress[1] = 'O';
-        progress[2] = 'D';
-        progress[3] = 'E';
-        progress[4] = ' ';
-        scope_format_u32(&progress[5], (uint32_t)(bode_current_step + 1u));
-        ui_text_append(progress, "/", sizeof(progress));
-        {
-            char step_total[8];
-            scope_format_u32(step_total, (uint32_t)steps);
-            ui_text_append(progress, step_total, sizeof(progress));
-        }
-        lcd_text((uint16_t)(gx + 4u), (uint16_t)(gy + gh - 12u), progress, RGB565(255, 255, 0), text_bg, 1);
+        char total[8];
+        ui_text_copy(progress, "Sweeping ", sizeof(progress));
+        scope_format_u32(total, (uint32_t)(bode_current_step + 1u));
+        ui_text_append(progress, total, sizeof(progress));
+        ui_text_append(progress, " / ", sizeof(progress));
+        scope_format_u32(total, (uint32_t)steps);
+        ui_text_append(progress, total, sizeof(progress));
+        gfx_text((int16_t)(gx + 6u), (int16_t)(gy + gh - 14u), &font_small, progress, D_AMBER, D_PLOT);
         scope_format_frequency_reading(label, bode_step_freq_hz);
-        lcd_text((uint16_t)(gx + gw - 72u), (uint16_t)(gy + gh - 12u), label, RGB565(255, 255, 0), text_bg, 1);
+        scope_plot_label_right((int16_t)(gx + gw - 6u), (int16_t)(gy + gh - 12u), label, D_AMBER);
     } else if (completed > 0u) {
-        lcd_text((uint16_t)(gx + 4u), (uint16_t)(gy + gh - 12u), "BODE DONE", RGB565(180, 220, 180), text_bg, 1);
+        gfx_text((int16_t)(gx + 6u), (int16_t)(gy + gh - 14u), &font_small, "Sweep done", D_GREEN, D_PLOT);
     }
 }
 
@@ -5646,15 +5646,15 @@ static void scope_pretty_value(const char *in, char *out, uint8_t size) {
     // Scope units arrive upper case ("MV", "KHZ"); on a scope M is milli
     // for volts and seconds, and k/M for hertz.
     {
-        static const char *const from[] = {"MV", "UV", "KHZ", "MHZ", "HZ", "MS", "US", "NS"};
-        static const char *const to[] = {"mV", "\xC2\xB5V", "kHz", "MHz", "Hz", "ms", "\xC2\xB5s", "ns"};
+        static const char *const from[] = {"MV", "UV", "KHZ", "MHZ", "HZ", "MS", "US", "NS", "DB"};
+        static const char *const to[] = {"mV", "\xC2\xB5V", "kHz", "MHz", "Hz", "ms", "\xC2\xB5s", "ns", "dB"};
         char *unit = out;
         while (*unit && *unit != ' ') {
             ++unit;
         }
         if (*unit == ' ') {
             ++unit;
-            for (uint8_t i = 0; i < 8u; ++i) {
+            for (uint8_t i = 0; i < 9u; ++i) {
                 if (ui_text_equal(unit, from[i])) {
                     ui_text_copy(unit, to[i], (uint8_t)(size - (uint8_t)(unit - out)));
                     break;
@@ -6885,17 +6885,6 @@ static void draw_gen_output_panel(uint16_t x, uint16_t y, uint16_t w, uint16_t h
     (void)accent;
 }
 
-// Halfway between two colours, channel by channel in RGB565. The number
-// editors use it on their leading zeros: editing digit by digit needs the
-// places to stay put, but "0001Hz" hides the order of magnitude when all
-// four digits shout equally loud.
-static uint16_t color_mix(uint16_t a, uint16_t b) {
-    uint16_t r = (uint16_t)((((a >> 11) & 0x1Fu) + ((b >> 11) & 0x1Fu)) / 2u);
-    uint16_t g = (uint16_t)((((a >> 5) & 0x3Fu) + ((b >> 5) & 0x3Fu)) / 2u);
-    uint16_t blue = (uint16_t)(((a & 0x1Fu) + (b & 0x1Fu)) / 2u);
-    return (uint16_t)((r << 11) | (g << 5) | blue);
-}
-
 // How many leading digits are zeros that carry nothing. The last place is
 // never counted, so a value of zero still shows one solid 0 rather than
 // fading away altogether.
@@ -6911,56 +6900,19 @@ static uint8_t editor_dim_digits(const char *digits, uint8_t count) {
     return dim;
 }
 
-// A four-digit number with its unit beside it, as the sweep, modulation
-// and Bode menus all edit. Each of those rows used to carry its own copy
-// of this loop -- six of them, differing only in which variable they read.
-// editing selects the place under edit_index; index 4 is the unit, which
-// those menus cycle in the same way.
-static void draw_digit_field(uint16_t x, uint16_t y, uint32_t value,
-                             uint8_t editing, uint8_t edit_index,
-                             const char *unit, uint16_t fg, uint16_t bg) {
-    char digits[5];
-    uint8_t dim;
-
-    digits[0] = (char)('0' + ((value / 1000u) % 10u));
-    digits[1] = (char)('0' + ((value / 100u) % 10u));
-    digits[2] = (char)('0' + ((value / 10u) % 10u));
-    digits[3] = (char)('0' + (value % 10u));
-    digits[4] = 0;
-    dim = editor_dim_digits(digits, 4);
-    for (uint8_t d = 0; d < 4u; ++d) {
-        uint16_t dx = (uint16_t)(x + d * 6u);
-        char text[2] = {digits[d], 0};
-        if (editing && edit_index == d) {
-            lcd_rect(dx, (uint16_t)(y - 1u), 6, 10, RGB565(255, 255, 255));
-            lcd_text(dx, y, text, RGB565(0, 120, 240), RGB565(255, 255, 255), 1);
-        } else {
-            lcd_text(dx, y, text, d < dim ? color_mix(fg, bg) : fg, bg, 1);
-        }
-    }
-    if (unit) {
-        uint16_t ux = (uint16_t)(x + 4u * 6u + 2u);
-        uint8_t selected = (uint8_t)(editing && edit_index == 4u);
-        lcd_text(ux, y, unit, selected ? RGB565(0, 120, 240) : fg,
-                 selected ? RGB565(255, 255, 255) : bg, 1);
-        if (selected) {
-            lcd_rect(ux, (uint16_t)(y + 8u), (uint16_t)(lcd_text_width(unit, 1) - 2u), 2,
-                     RGB565(255, 255, 255));
-        }
-    }
-}
-
 // Digit-by-digit editors: fixed-width digits; the place being edited sits
 // on a solid accent block, leading zeros are dimmed.
-static int16_t draw_gen_editor_digits(int16_t x, uint16_t y, const char *digits, uint8_t count,
+// Digit-by-digit editors: fixed-width digits; the place being edited sits
+// on a solid accent block, leading zeros are dimmed.
+static int16_t draw_editor_digits_dot(int16_t x, uint16_t y, const char *digits, uint8_t count,
                                       int8_t selected, uint8_t dim, int8_t dot_after,
-                                      uint16_t fg, uint16_t bg) {
+                                      uint16_t accent, uint16_t fg, uint16_t bg) {
     uint16_t adv = gfx_text_width(&font_medium, "0");
     for (uint8_t i = 0; i < count; ++i) {
         char text[2] = {digits[i], 0};
         if ((int8_t)i == selected) {
-            gfx_round_rect((uint16_t)(x - 2), (uint16_t)(y + 1u), (uint16_t)(adv + 3u), 16, 4, D_GEN, bg);
-            gfx_text(x, (int16_t)y, &font_medium, text, D_BG, D_GEN);
+            gfx_round_rect((uint16_t)(x - 2), (uint16_t)(y + 1u), (uint16_t)(adv + 3u), 16, 4, accent, bg);
+            gfx_text(x, (int16_t)y, &font_medium, text, D_BG, accent);
         } else {
             gfx_text(x, (int16_t)y, &font_medium, text, i < dim ? D_TRACK : fg, bg);
         }
@@ -6970,6 +6922,17 @@ static int16_t draw_gen_editor_digits(int16_t x, uint16_t y, const char *digits,
         }
     }
     return x;
+}
+
+static void ui_draw_editor_digits(int16_t x, uint16_t y, const char *digits, uint8_t count,
+                                  int8_t selected, uint8_t dim, uint16_t accent, uint16_t fg, uint16_t bg) {
+    (void)draw_editor_digits_dot(x, y, digits, count, selected, dim, -1, accent, fg, bg);
+}
+
+static int16_t draw_gen_editor_digits(int16_t x, uint16_t y, const char *digits, uint8_t count,
+                                      int8_t selected, uint8_t dim, int8_t dot_after,
+                                      uint16_t fg, uint16_t bg) {
+    return draw_editor_digits_dot(x, y, digits, count, selected, dim, dot_after, D_GEN, fg, bg);
 }
 
 static void draw_gen_editor_unit(int16_t x, uint16_t y, const char *unit, uint8_t selected, uint16_t fg, uint16_t bg) {
@@ -7084,95 +7047,42 @@ static void draw_gen_param_row(uint16_t x, uint16_t y) {
 }
 
 static void ui_draw_gen_sweep_menu(void) {
+    static const char *const sweep_names[] = {"Off", "Linear", "Log"};
+    static const char *const fm_names[] = {"Off", "On"};
+    static const char *const fm_wave_names[] = {"Sine", "Triangle", "Square"};
+    uint8_t sel = gen_sweep_row_selected;
+    uint16_t y;
+    uint16_t fill;
+
     if (!gen_sweep_menu_active) {
         return;
     }
+    y = ui_list_begin("Sweep and modulation", ICON_GENERATOR_SM, D_GEN, gfx_blend(D_GEN, D_CARD, 4), 7);
 
-    const char *gen_sweep_mode_names[] = { "OFF", "LINEAR", "LOG" };
-    const char *gen_fm_mode_names[]    = { "OFF", "ON" };
-    const char *gen_fm_wave_names[]    = { "SINE", "TRIANGLE", "SQUARE" };
-
-    uint16_t box_x = 50;
-    uint16_t box_y = 40;
-    uint16_t box_w = 220;
-    uint16_t box_h = 160;
-
-
-    lcd_rect(box_x, box_y, box_w, box_h, RGB565(30, 30, 45)); 
-    lcd_frame(box_x, box_y, box_w, box_h, RGB565(255, 165, 0)); 
-
-    lcd_text(box_x + 10, box_y + 8, "SWEEP AND MODULATION", RGB565(255, 255, 255), RGB565(30, 30, 45), 1);
-    lcd_rect(box_x + 10, box_y + 20, box_w - 20, 1, RGB565(100, 100, 100)); 
-
-    uint16_t color_fg, color_bg;
-    uint16_t row_y;
-
-    row_y = box_y + 26;
-    color_bg = (gen_sweep_row_selected == 0) ? RGB565(0, 120, 240) : RGB565(30, 30, 45);
-    color_fg = RGB565(255, 255, 255);
-    lcd_rect(box_x + 8, row_y, box_w - 16, 14, color_bg);
-    lcd_text(box_x + 12, row_y + 3, "SWEEP MODE:", color_fg, color_bg, 1);
-    lcd_text(box_x + 110, row_y + 3, gen_sweep_mode_names[gen_sweep_mode], color_fg, color_bg, 1);
-
-    row_y = box_y + 44;
-    color_bg = (gen_sweep_row_selected == 1) ? RGB565(0, 120, 240) : RGB565(30, 30, 45);
-    color_fg = (gen_sweep_mode) ? RGB565(255, 255, 255) : RGB565(120, 120, 120); 
-    lcd_rect(box_x + 8, row_y, box_w - 16, 14, color_bg);
-    lcd_text(box_x + 12, row_y + 3, "SWEEP TIME:", color_fg, color_bg, 1);
-    
-    draw_digit_field((uint16_t)(box_x + 110), (uint16_t)(row_y + 3), gen_sweep_ms,
-                     (uint8_t)(ui_edit_digit_active && gen_sweep_row_selected == 1),
-                     ui_edit_digit_index, "ms", color_fg, color_bg);
-
-    row_y = box_y + 62;
-    color_bg = (gen_sweep_row_selected == 2) ? RGB565(0, 120, 240) : RGB565(30, 30, 45);
-    color_fg = (gen_sweep_mode) ? RGB565(255, 255, 255) : RGB565(120, 120, 120); 
-    lcd_rect(box_x + 8, row_y, box_w - 16, 14, color_bg);
-    lcd_text(box_x + 12, row_y + 3, "START FREQ:", color_fg, color_bg, 1);
-    
-    draw_digit_field((uint16_t)(box_x + 110), (uint16_t)(row_y + 3),
-                     freq_clamp_display(siggen_sweep_start_hz, sweep_start_unit),
-                     (uint8_t)(ui_edit_digit_active && gen_sweep_row_selected == 2),
-                     ui_edit_digit_index, freq_unit_labels[sweep_start_unit < 3u ? sweep_start_unit : 0u],
-                     color_fg, color_bg);
-
-    row_y = box_y + 80;
-    color_bg = (gen_sweep_row_selected == 3) ? RGB565(0, 120, 240) : RGB565(30, 30, 45);
-    color_fg = (gen_sweep_mode) ? RGB565(255, 255, 255) : RGB565(120, 120, 120); 
-    lcd_rect(box_x + 8, row_y, box_w - 16, 14, color_bg);
-    lcd_text(box_x + 12, row_y + 3, "STOP FREQ:", color_fg, color_bg, 1);
-    
-    draw_digit_field((uint16_t)(box_x + 110), (uint16_t)(row_y + 3),
-                     freq_clamp_display(siggen_sweep_stop_hz, sweep_stop_unit),
-                     (uint8_t)(ui_edit_digit_active && gen_sweep_row_selected == 3),
-                     ui_edit_digit_index, freq_unit_labels[sweep_stop_unit < 3u ? sweep_stop_unit : 0u],
-                     color_fg, color_bg);
-
-    row_y = box_y + 98;
-    color_bg = (gen_sweep_row_selected == 4) ? RGB565(0, 120, 240) : RGB565(30, 30, 45);
-    color_fg = RGB565(255, 255, 255);
-    lcd_rect(box_x + 8, row_y, box_w - 16, 14, color_bg);
-    lcd_text(box_x + 12, row_y + 3, "FM MODE:", color_fg, color_bg, 1);
-    lcd_text(box_x + 110, row_y + 3, gen_fm_mode_names[gen_fm_mode], color_fg, color_bg, 1);
-
-    row_y = box_y + 116;
-    color_bg = (gen_sweep_row_selected == 5) ? RGB565(0, 120, 240) : RGB565(30, 30, 45);
-    color_fg = (gen_fm_mode) ? RGB565(255, 255, 255) : RGB565(120, 120, 120); 
-    lcd_rect(box_x + 8, row_y, box_w - 16, 14, color_bg);
-    lcd_text(box_x + 12, row_y + 3, "FM WAVE:", color_fg, color_bg, 1);
-    lcd_text(box_x + 110, row_y + 3, gen_fm_wave_names[gen_fm_source], color_fg, color_bg, 1);
-
-    row_y = box_y + 134;
-    color_bg = (gen_sweep_row_selected == 6) ? RGB565(0, 120, 240) : RGB565(30, 30, 45);
-    color_fg = (gen_fm_mode) ? RGB565(255, 255, 255) : RGB565(120, 120, 120); 
-    lcd_rect(box_x + 8, row_y, box_w - 16, 14, color_bg);
-    lcd_text(box_x + 12, row_y + 3, "FM FREQ:", color_fg, color_bg, 1);
-    
-    draw_digit_field((uint16_t)(box_x + 110), (uint16_t)(row_y + 3),
-                     freq_clamp_display(gen_fm_freq_hz, fm_freq_unit),
-                     (uint8_t)(ui_edit_digit_active && gen_sweep_row_selected == 6),
-                     ui_edit_digit_index, freq_unit_labels[fm_freq_unit < 3u ? fm_freq_unit : 0u],
-                     color_fg, color_bg);
+    ui_list_row(y, "Sweep", sweep_names[gen_sweep_mode < 3u ? gen_sweep_mode : 0u], sel == 0u, 1, D_GEN);
+    y = (uint16_t)(y + UI_LIST_ROW_H);
+    fill = ui_list_row(y, "Sweep time", 0, sel == 1u, gen_sweep_mode != 0u, D_GEN);
+    ui_list_digits(y, gen_sweep_ms, (uint8_t)(ui_edit_digit_active && sel == 1u), ui_edit_digit_index,
+                   "ms", sel == 1u, gen_sweep_mode != 0u, D_GEN, fill);
+    y = (uint16_t)(y + UI_LIST_ROW_H);
+    fill = ui_list_row(y, "Start freq", 0, sel == 2u, gen_sweep_mode != 0u, D_GEN);
+    ui_list_digits(y, freq_clamp_display(siggen_sweep_start_hz, sweep_start_unit),
+                   (uint8_t)(ui_edit_digit_active && sel == 2u), ui_edit_digit_index,
+                   freq_unit_labels[sweep_start_unit < 3u ? sweep_start_unit : 0u], sel == 2u, gen_sweep_mode != 0u, D_GEN, fill);
+    y = (uint16_t)(y + UI_LIST_ROW_H);
+    fill = ui_list_row(y, "Stop freq", 0, sel == 3u, gen_sweep_mode != 0u, D_GEN);
+    ui_list_digits(y, freq_clamp_display(siggen_sweep_stop_hz, sweep_stop_unit),
+                   (uint8_t)(ui_edit_digit_active && sel == 3u), ui_edit_digit_index,
+                   freq_unit_labels[sweep_stop_unit < 3u ? sweep_stop_unit : 0u], sel == 3u, gen_sweep_mode != 0u, D_GEN, fill);
+    y = (uint16_t)(y + UI_LIST_ROW_H);
+    ui_list_row(y, "FM", fm_names[gen_fm_mode ? 1u : 0u], sel == 4u, 1, D_GEN);
+    y = (uint16_t)(y + UI_LIST_ROW_H);
+    ui_list_row(y, "FM wave", fm_wave_names[gen_fm_source < 3u ? gen_fm_source : 0u], sel == 5u, gen_fm_mode != 0u, D_GEN);
+    y = (uint16_t)(y + UI_LIST_ROW_H);
+    fill = ui_list_row(y, "FM freq", 0, sel == 6u, gen_fm_mode != 0u, D_GEN);
+    ui_list_digits(y, freq_clamp_display(gen_fm_freq_hz, fm_freq_unit),
+                   (uint8_t)(ui_edit_digit_active && sel == 6u), ui_edit_digit_index,
+                   freq_unit_labels[fm_freq_unit < 3u ? fm_freq_unit : 0u], sel == 6u, gen_fm_mode != 0u, D_GEN, fill);
 }
 
 static void draw_generator_immersive(void) {

@@ -127,13 +127,13 @@ $(BUILD_ROOT)/tests/dmm-old $(BUILD_ROOT)/tests/dmm-hw4: tests/dmm.c src/dmm.c s
 	@mkdir -p $(dir $@)
 	$(CLANG) $(HOST_TEST_FLAGS) -DHW_TARGET_HW40=$(if $(filter %-hw4,$@),1,0) -DEXPECTED_FW_VERSION='"$(VERSION)"' $< $(HOST_TEST_LINK) -o $@
 
-$(BUILD_ROOT)/tests/%-old: tests/%.c src/ui.c src/settings.h src/fft.h
+$(BUILD_ROOT)/tests/%-old: tests/%.c src/ui.c src/settings.h src/fft.h src/gfx.c src/ui_fonts.c
 	@mkdir -p $(dir $@)
-	$(CLANG) $(HOST_TEST_FLAGS) -DHW_TARGET_HW40=0 $< $(HOST_TEST_LINK) -o $@
+	$(CLANG) $(HOST_TEST_FLAGS) -DHW_TARGET_HW40=0 $< src/gfx.c src/ui_fonts.c $(HOST_TEST_LINK) -o $@
 
-$(BUILD_ROOT)/tests/%-hw4: tests/%.c src/ui.c src/settings.h src/fft.h
+$(BUILD_ROOT)/tests/%-hw4: tests/%.c src/ui.c src/settings.h src/fft.h src/gfx.c src/ui_fonts.c
 	@mkdir -p $(dir $@)
-	$(CLANG) $(HOST_TEST_FLAGS) -DHW_TARGET_HW40=1 $< $(HOST_TEST_LINK) -o $@
+	$(CLANG) $(HOST_TEST_FLAGS) -DHW_TARGET_HW40=1 $< src/gfx.c src/ui_fonts.c $(HOST_TEST_LINK) -o $@
 
 $(BUILD_ROOT)/tests/fft: tests/fft.c src/fft.c src/fft.h
 	@mkdir -p $(dir $@)

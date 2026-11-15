@@ -226,6 +226,22 @@ int main(void) {
     scope_shot("scope-row-measure");
     ui.scope_measure_menu = 0;
 
+    // Analytical / Math menu, FFT view, Bode menu and plot.
+    ui_math_menu_visible = 1; scope_math_selected = 0; scope_fft_src = 1;
+    scope_shot("scope-math-menu");
+    ui_math_menu_visible = 0;
+    scope_shot("scope-fft");
+    scope_fft_src = 4; bode_is_sweeping = 0;
+    for (uint8_t i = 0; i < BODE_MAX_STEPS; ++i) {
+        float t = (float)i / (float)(BODE_MAX_STEPS - 1);
+        bode_gain_db[i] = t < 0.5f ? 0.0f : -80.0f * (t - 0.5f);
+        bode_phase_deg[i] = -170.0f * t;
+    }
+    scope_shot("scope-bode");
+    ui_math_menu_visible = 1; scope_math_selected = 1; ui_edit_digit_active = 1; ui_edit_digit_index = 2;
+    scope_shot("scope-bode-menu");
+    ui_math_menu_visible = 0; ui_edit_digit_active = 0; scope_fft_src = 0;
+
     ui.mode = UI_MODE_GEN;
     ui.gen_wave = SIGGEN_WAVE_SINE; ui.running = 1;
     ui.gen_param = GEN_PARAM_FREQ; gen_freq_edit_pos = 1;
@@ -238,6 +254,10 @@ int main(void) {
     draw_generator_immersive(); save("gen-3");
     ui.gen_wave = SIGGEN_WAVE_SINE; ui.gen_param = GEN_PARAM_AMP; gen_freq_edit_pos = 0;
     draw_generator_immersive(); save("gen-4");
+    gen_sweep_menu_active = 1; gen_sweep_mode = 1; gen_sweep_row_selected = 2;
+    ui_edit_digit_active = 1; ui_edit_digit_index = 1;
+    draw_generator_immersive(); save("gen-sweep-menu");
+    gen_sweep_menu_active = 0; gen_sweep_mode = 0; ui_edit_digit_active = 0;
     ui.mode = UI_MODE_DMM; ui.running = 1;
 
     ui.overlay = UI_OVERLAY_SETTINGS;

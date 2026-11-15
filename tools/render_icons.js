@@ -63,6 +63,8 @@ const ICONS = [
   ['error_md', 'circle-x', 20, 2.2],
   ['edge_rise_sm', 'edge_rise', 11, 2.6],
   ['edge_fall_sm', 'edge_fall', 11, 2.6],
+  ['scope_sm', 'scope', 12, 2.2],
+  ['generator_sm', 'generator', 12, 2.2],
 ];
 
 (async () => {

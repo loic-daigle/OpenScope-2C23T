@@ -30,3 +30,5 @@
 #define ICON_ERROR_MD "\xEE\x80\x99"
 #define ICON_EDGE_RISE_SM "\xEE\x80\x9A"
 #define ICON_EDGE_FALL_SM "\xEE\x80\x9B"
+#define ICON_SCOPE_SM "\xEE\x80\x9C"
+#define ICON_GENERATOR_SM "\xEE\x80\x9D"
