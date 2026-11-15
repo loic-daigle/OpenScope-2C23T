@@ -50,7 +50,9 @@ void lcd_render(lcd_render_fn_t fn, void *ctx) { fn(ctx); }
 static uint8_t batt_pct = 87;
 uint8_t battery_percent(void) { return batt_pct; }
 uint16_t battery_millivolts(void) { return 3950; }
-uint8_t battery_is_charging(void) { return 0; }
+static uint8_t charging;
+uint8_t battery_is_charging(void) { return charging; }
+uint8_t usb_cdc_is_configured(void) { return charging; }
 
 uint32_t load_counter_read(void) { return 0; }
 uint32_t load_counter_elapsed(uint32_t start, uint32_t end) { return end - start; }
@@ -121,7 +123,9 @@ int main(void) {
 
     enter(DMM_MODE_DIODE);
     feed(4, "0004", 8, 0, 0x20, 0);
+    charging = 1;
     shot("03-continuity");
+    charging = 0;
 
     enter(DMM_MODE_ACV);
     feed(2, "2298", 8, 0, 0, 2); feed(2, "2331", 8, 0, 0, 2); feed(2, "2317", 8, 0, 0, 2);

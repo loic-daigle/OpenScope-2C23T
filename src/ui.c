@@ -13,6 +13,7 @@
 #include "bootloader.h"
 #include "fft.h"
 #include "gfx.h"
+#include "ui_icons.h"
 #include "arb_csv.h"
 
 #include <stdint.h>
@@ -4083,12 +4084,28 @@ static int32_t dmm_bar_full_scale(int32_t magnitude) {
     }
 }
 
-static void dmm_draw_pill(int16_t right, uint16_t y, const char *label, uint16_t fill, uint16_t fg, uint16_t under, int16_t *left_out) {
-    uint16_t w = (uint16_t)(gfx_text_width(&font_small, label) + 12u);
+// Draws an icon from font_icons with the top of its box at y.
+static int16_t dmm_icon(int16_t x, int16_t y, const char *icon, uint16_t fg, uint16_t bg) {
+    return gfx_text(x, y, &font_icons, icon, fg, bg);
+}
+
+static void dmm_draw_pill_icon(int16_t right, uint16_t y, const char *icon, const char *label,
+                               uint16_t fill, uint16_t fg, uint16_t under, int16_t *left_out) {
+    uint16_t icon_w = icon ? (uint16_t)(gfx_text_width(&font_icons, icon) + 3u) : 0u;
+    uint16_t w = (uint16_t)(gfx_text_width(&font_small, label) + icon_w + 12u);
     int16_t x = (int16_t)(right - (int16_t)w);
     gfx_round_rect((uint16_t)x, y, w, 15, 7, fill, under);
-    gfx_text((int16_t)(x + 6), (int16_t)(y + 1), &font_small, label, fg, fill);
+    if (icon) {
+        // Small icons are 9-12 px square; centre them in the 15 px pill.
+        int16_t size = (int16_t)(icon_w - 3u);
+        dmm_icon((int16_t)(x + 6), (int16_t)(y + (15 - size) / 2), icon, fg, fill);
+    }
+    gfx_text((int16_t)(x + 6 + (int16_t)icon_w), (int16_t)(y + 1), &font_small, label, fg, fill);
     *left_out = (int16_t)(x - 4);
+}
+
+static void dmm_draw_pill(int16_t right, uint16_t y, const char *label, uint16_t fill, uint16_t fg, uint16_t under, int16_t *left_out) {
+    dmm_draw_pill_icon(right, y, 0, label, fill, fg, under, left_out);
 }
 
 static void dmm_draw_status_bar(void) {
@@ -4115,10 +4132,12 @@ static void dmm_draw_status_bar(void) {
     gfx_text(x, 5, &font_small, pct, battery_alert_color(D_MUTED), D_BG);
     x = (int16_t)(x - 4);
     if (battery_charge_indicator_visible()) {
-        gfx_line((int16_t)(x - 2), 6, (int16_t)(x - 6), 11, 2, D_GREEN, D_BG);
-        gfx_line((int16_t)(x - 6), 11, (int16_t)(x - 2), 11, 2, D_GREEN, D_BG);
-        gfx_line((int16_t)(x - 2), 11, (int16_t)(x - 6), 16, 2, D_GREEN, D_BG);
-        x = (int16_t)(x - 12);
+        dmm_icon((int16_t)(x - 11), 6, ICON_CHARGE_SM, D_GREEN, D_BG);
+        x = (int16_t)(x - 15);
+    }
+    if (usb_cdc_is_configured()) {
+        dmm_icon((int16_t)(x - 12), 5, ICON_USB_SM, D_MUTED, D_BG);
+        x = (int16_t)(x - 16);
     }
     if (gen_running || gen_output_applied) {
         int16_t left;
@@ -4147,7 +4166,7 @@ static void dmm_draw_card_header(uint16_t card_color, uint16_t title_color, uint
     title_end = gfx_text(DMM_IN_X, DMM_CARD_Y + 7, &font_medium, dmm_mode_names[ui.dmm_mode], title_color, card_color);
 
     if (dmm_hold_active) {
-        dmm_draw_pill(right, DMM_CARD_Y + 8, "HOLD", D_AMBER, D_BG, card_color, &right);
+        dmm_draw_pill_icon(right, DMM_CARD_Y + 8, ICON_PAUSE_SM, "HOLD", D_AMBER, D_BG, card_color, &right);
     }
     if (dmm_rel_active) {
         dmm_draw_pill(right, DMM_CARD_Y + 8, "REL \xCE\x94", D_ACCENT, D_BG, card_color, &right);
@@ -4162,17 +4181,16 @@ static void dmm_draw_card_header(uint16_t card_color, uint16_t title_color, uint
         const char *label = warning >= 2u ? "HIGH VOLTAGE" : "CAUTION";
         uint16_t color = warning >= 2u ? D_RED_TEXT : D_AMBER;
         int16_t x = (int16_t)(title_end + 8);
-        if (x + 14 + (int16_t)gfx_text_width(&font_small, label) <= right) {
-            gfx_line((int16_t)(x + 5), DMM_CARD_Y + 11, (int16_t)(x + 1), DMM_CARD_Y + 18, 1, color, card_color);
-            gfx_line((int16_t)(x + 1), DMM_CARD_Y + 18, (int16_t)(x + 9), DMM_CARD_Y + 18, 1, color, card_color);
-            gfx_line((int16_t)(x + 9), DMM_CARD_Y + 18, (int16_t)(x + 5), DMM_CARD_Y + 11, 1, color, card_color);
-            gfx_text((int16_t)(x + 14), DMM_CARD_Y + 9, &font_small, label, color, card_color);
+        if (x + 15 + (int16_t)gfx_text_width(&font_small, label) <= right) {
+            dmm_icon(x, DMM_CARD_Y + 8, ICON_ALERT_SM, color, card_color);
+            gfx_text((int16_t)(x + 15), DMM_CARD_Y + 9, &font_small, label, color, card_color);
         }
     } else if (dmm_current_mode()) {
         const char *label = dmm_high_current_mode() ? "USE HI JACK" : "USE LO JACK";
         int16_t x = (int16_t)(title_end + 8);
-        if (x + (int16_t)gfx_text_width(&font_small, label) <= right) {
-            gfx_text(x, DMM_CARD_Y + 9, &font_small, label, D_AMBER, card_color);
+        if (x + 15 + (int16_t)gfx_text_width(&font_small, label) <= right) {
+            dmm_icon(x, DMM_CARD_Y + 8, ICON_PLUG_SM, D_AMBER, card_color);
+            gfx_text((int16_t)(x + 15), DMM_CARD_Y + 9, &font_small, label, D_AMBER, card_color);
         }
     }
 }
@@ -4328,7 +4346,7 @@ static void dmm_draw_stats(void) {
 // One tall status card: continuity, live wire. `icon` 0 = check, 1 = bolt.
 static void dmm_draw_state_card(uint16_t card, uint16_t sub, uint16_t accent, uint16_t line,
                                 uint16_t icon_bg, uint16_t icon_fg, uint8_t icon,
-                                const char *pill, uint16_t pill_bg, uint16_t pill_fg,
+                                const char *pill_icon, const char *pill, uint16_t pill_bg, uint16_t pill_fg,
                                 const char *headline, uint16_t headline_color,
                                 const char *detail, const char *detail_unit,
                                 const char *footer_left, const char *footer_right) {
@@ -4338,17 +4356,14 @@ static void dmm_draw_state_card(uint16_t card, uint16_t sub, uint16_t accent, ui
     gfx_round_rect(DMM_X, DMM_CARD_Y, DMM_W, DMM_TALL_H, 14, card, D_BG);
     gfx_text(DMM_IN_X, DMM_CARD_Y + 7, &font_medium, dmm_mode_names[ui.dmm_mode], sub, card);
     if (pill) {
-        dmm_draw_pill(right, DMM_CARD_Y + 8, pill, pill_bg, pill_fg, card, &right);
+        dmm_draw_pill_icon(right, DMM_CARD_Y + 8, pill_icon, pill, pill_bg, pill_fg, card, &right);
     }
 
     gfx_round_rect(CX - 28, CY - 28, 56, 56, 28, icon_bg, card);
     if (icon == 0u) {
-        gfx_line(CX - 13, CY + 1, CX - 4, CY + 10, 4, icon_fg, icon_bg);
-        gfx_line(CX - 4, CY + 10, CX + 13, CY - 9, 4, icon_fg, icon_bg);
+        dmm_icon(CX - 17, CY - 17, ICON_CHECK_XL, icon_fg, icon_bg);
     } else {
-        gfx_line(CX + 5, CY - 15, CX - 8, CY + 3, 4, icon_fg, icon_bg);
-        gfx_line(CX - 8, CY + 3, CX + 8, CY - 3, 4, icon_fg, icon_bg);
-        gfx_line(CX + 8, CY - 3, CX - 5, CY + 15, 4, icon_fg, icon_bg);
+        dmm_icon(CX - 16, CY - 16, ICON_ZAP_XL, icon_fg, icon_bg);
     }
 
     gfx_text(DMM_X + 88, CY - 28, &font_large, headline, headline_color, card);
@@ -4372,12 +4387,12 @@ static void draw_dmm_immersive_panel(void) {
     if (ui.dmm_mode == DMM_MODE_LIVE) {
         if (dmm_live_wire_detected()) {
             dmm_draw_state_card(D_RED_CARD, D_RED_SUB, D_RED, D_RED_LINE, D_RED, D_BG, 1,
-                                "DETECTED", D_RED, D_BG, "Live wire", D_TEXT,
+                                ICON_ALERT_SM, "DETECTED", D_RED, D_BG, "Live wire", D_TEXT,
                                 "AC mains sensed near probe", 0,
                                 "Non-contact check: confirm with a reading", 0);
         } else {
             dmm_draw_state_card(D_CARD, D_SUB, D_ACCENT, D_TRACK, D_TRACK, D_MUTED, 1,
-                                "SCANNING", D_ACCENT_TINT, D_ACCENT, "No live wire", D_SUB,
+                                0, "SCANNING", D_ACCENT_TINT, D_ACCENT, "No live wire", D_SUB,
                                 "Hold the probe near a conductor", 0,
                                 "Beeps when mains voltage is sensed", 0);
         }
@@ -4386,7 +4401,7 @@ static void draw_dmm_immersive_panel(void) {
 
     if (ui.dmm_mode == DMM_MODE_DIODE && !dmm_hold_active && !dmm_rel_active && dmm_diode_continuity_active()) {
         dmm_draw_state_card(D_GREEN_CARD, D_GREEN_SUB, D_GREEN, D_GREEN_TINT, D_GREEN, D_BG, 0,
-                            "BEEP", D_GREEN_TINT, D_GREEN, "Connected", D_TEXT,
+                            ICON_BEEP_SM, "BEEP", D_GREEN_TINT, D_GREEN, "Connected", D_TEXT,
                             dmm_display_value(), dmm_unit_pretty(dmm_display_unit()),
                             "Beeps below 50 \xCE\xA9", "Open circuit shows OPEN");
         return;

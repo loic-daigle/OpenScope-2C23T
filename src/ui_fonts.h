@@ -25,3 +25,4 @@ extern const lcd_font_t font_huge;   // 56 px, digits and sign only
 extern const lcd_font_t font_large;  // 26 px, letters, digits, units
 extern const lcd_font_t font_medium; // 13 px, full ASCII + unit symbols
 extern const lcd_font_t font_small;  // 10 px, full ASCII + unit symbols
+extern const lcd_font_t font_icons;  // Lucide icons, see ui_icons.h
