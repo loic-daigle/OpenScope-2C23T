@@ -651,6 +651,16 @@ static uint8_t format_value(const uint8_t frame[DMM_FRAME_LEN], const char *unit
     return 1;
 }
 
+// Frame counters for the diagnostic build: every frame taken from the UART,
+// and how many were accepted or rejected by the checks below.
+static uint16_t dmm_diag_frames;
+static uint16_t dmm_diag_accepted;
+
+void dmm_diag_counters(uint16_t *frames, uint16_t *accepted) {
+    *frames = dmm_diag_frames;
+    *accepted = dmm_diag_accepted;
+}
+
 static uint8_t parse_frame(const uint8_t frame[DMM_FRAME_LEN]) {
     char new_value[10];
     char new_unit[6];
@@ -680,6 +690,7 @@ static uint8_t parse_frame(const uint8_t frame[DMM_FRAME_LEN]) {
         return 0;
     }
 
+    ++dmm_diag_accepted;
     changed = (uint8_t)(!dmm_valid || !text_equal(new_value, dmm_value) ||
                         !text_equal(new_unit, dmm_unit) || new_fahrenheit != dmm_unit_fahrenheit);
     text_copy(dmm_value, new_value, sizeof(dmm_value));
@@ -910,6 +921,7 @@ uint8_t dmm_poll(void) {
     rx_ready = 0;
     __asm__ volatile("cpsie i" ::: "memory");
 
+    ++dmm_diag_frames;
     return parse_frame(frame);
 }
 
