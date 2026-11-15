@@ -689,7 +689,6 @@ static const char *const scope_display_short[] = {"YT", "ROLL", "XY"};
 static const char *const scope_cursor_labels[] = {"CUR OFF", "T CUR", "Y CUR", "B CUR"};
 static const char *const scope_cursor_short[] = {"OFF", "T", "Y", "B"};
 static const char *const scope_trigger_short[] = {"AUTO", "NORM", "SNGL"};
-static const char *const scope_measure_labels[] = {"VPP", "VMAX", "VMIN", "VAVG", "VRMS", "FREQ"};
 static const char *const scope_param_labels[] = {
     "VIEW", "ON", "PROBE", "V/DIV", "COUP", "ZERO", "POS", "TIME", "TRIG", "CUR",
     "SRC", "LEVEL", "MODE", "EDGE", "MEAS",
@@ -2595,7 +2594,7 @@ static void draw_scope_trigger_param_row(uint16_t x, uint16_t y) {
 
 static const char *scope_measure_pretty_label(uint8_t measure) {
     static const char *const labels[] = {"Vpp", "Vmax", "Vmin", "Vavg", "Vrms", "Freq"};
-    return measure < 6u ? labels[measure] : scope_measure_labels[measure];
+    return labels[measure < 6u ? measure : 0u];
 }
 
 static const char *scope_measure_channel_state_label(uint8_t idx) {

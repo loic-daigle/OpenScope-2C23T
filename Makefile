@@ -83,7 +83,7 @@ HOST_TEST_BINS := $(BUILD_ROOT)/tests/bootloader-old $(BUILD_ROOT)/tests/bootloa
                   $(BUILD_ROOT)/tests/generator-old $(BUILD_ROOT)/tests/generator-hw4 \
                   $(BUILD_ROOT)/tests/fpga_timing-old $(BUILD_ROOT)/tests/fpga_timing-hw4
 
-.PHONY: all clean clean-dist release release-lt-hw4 release-hw4 test dmm-preview
+.PHONY: all clean clean-dist release release-lt-hw4 release-hw4 test preview screenshots
 
 all: $(BUILD)/$(PROJECT).bin
 
@@ -141,11 +141,17 @@ $(BUILD_ROOT)/tests/settings: tests/settings.c src/settings.c src/settings.h src
 	@mkdir -p $(dir $@)
 	$(CLANG) $(HOST_TEST_FLAGS) $< $(HOST_TEST_LINK) -o $@
 
-# Render the multimeter screen states on the host: build/dmm-preview/*.ppm
-dmm-preview: tools/dmm_preview.c src/ui.c src/dmm.c src/gfx.c src/ui_fonts.c
-	@mkdir -p $(BUILD_ROOT)/dmm-preview
-	$(CLANG) -std=c11 -O1 -Wall -Wextra -ffunction-sections -fdata-sections -DHW_TARGET_HW40=1 -DSCOPE_UI_SAFE_STUB=0 -DEXPECTED_FW_VERSION='"$(VERSION)"' $< $(HOST_TEST_LINK) -o $(BUILD_ROOT)/dmm-preview/run
-	$(BUILD_ROOT)/dmm-preview/run
+# Render every screen on the host with the firmware's own drawing code:
+# build/preview/*.ppm are the exact 320x240 framebuffers.
+preview: tools/screen_preview.c src/ui.c src/dmm.c src/gfx.c src/ui_fonts.c
+	@mkdir -p $(BUILD_ROOT)/preview
+	$(CLANG) -std=c11 -O1 -Wall -Wextra -ffunction-sections -fdata-sections -DHW_TARGET_HW40=1 -DSCOPE_UI_SAFE_STUB=0 -DEXPECTED_FW_VERSION='"$(VERSION)"' $< $(HOST_TEST_LINK) -o $(BUILD_ROOT)/preview/run
+	$(BUILD_ROOT)/preview/run
+
+# README screenshots: the preview frames at 2x, pixel-exact (needs Pillow).
+screenshots: preview tools/ppm_to_png.py
+	rm -rf docs/screenshots
+	python3 tools/ppm_to_png.py $(BUILD_ROOT)/preview docs/screenshots
 
 $(LLD_DIR)/ld.lld:
 	@test -n "$(RUST_LLD)" || (echo "rust-lld not found; install an ARM linker or Rust toolchain with rust-lld" >&2; exit 1)
