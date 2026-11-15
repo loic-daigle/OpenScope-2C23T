@@ -1,0 +1,36 @@
+name: Release
+
+# Push a tag such as v2026.11.5-ui1 to build, test and publish a release.
+# The tag must match VERSION in the Makefile (the DMM test checks the
+# firmware's version string against it), and docs/releases/<tag>.md holds
+# the release notes.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install clang
+        run: sudo apt-get update && sudo apt-get install -y clang
+      - name: Run host regression tests
+        run: make test
+      - name: Build release binaries
+        run: make release
+      - name: Check the binaries carry the tag's version
+        run: |
+          test -f "dist/F2C23T-${GITHUB_REF_NAME}-08008000.bin"
+          test -f "dist/F2C23T-${GITHUB_REF_NAME}-HW4.0-08007000.bin"
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          body_path: docs/releases/${{ github.ref_name }}.md
+          files: dist/*.bin
