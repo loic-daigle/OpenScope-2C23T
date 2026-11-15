@@ -22,6 +22,9 @@ const CUSTOM = {
              '<rect x="0.5" y="2" width="2" height="8" rx="0.4" fill="#ffffff"/>' +
              '<rect x="3.5" y="2" width="2" height="8" rx="0.4" fill="#ffffff"/>' +
              '<path d="M7 2v8l4.8-4z" fill="#ffffff"/></svg>',
+  // Trigger edges: a step with an arrow on the rising / falling side.
+  edge_rise: svg24('<path d="M3 19h7V5h11"/><path d="M7 11l3-3 3 3"/>'),
+  edge_fall: svg24('<path d="M3 5h7v14h11"/><path d="M7 13l3 3 3-3"/>'),
   generator: svg24('<path d="M2 16h3.5V8h6v8h6V8H21"/><path d="M2 20h20" opacity="0.45"/>'),
 };
 
@@ -58,6 +61,8 @@ const ICONS = [
   ['storage_sm', 'hard-drive', 12, 2.2],
   ['ok_md', 'circle-check', 20, 2.2],
   ['error_md', 'circle-x', 20, 2.2],
+  ['edge_rise_sm', 'edge_rise', 11, 2.6],
+  ['edge_fall_sm', 'edge_fall', 11, 2.6],
 ];
 
 (async () => {

@@ -540,6 +540,31 @@ static const uint16_t C_GEN = RGB565(192, 132, 252);
 static const uint16_t C_BATT = RGB565(52, 211, 153);
 static const uint16_t C_BATT_FULL = RGB565(52, 211, 153);
 
+// Modern UI palette (multimeter, menu, settings, scope).
+static const uint16_t D_BG = RGB565(11, 14, 19);
+static const uint16_t D_CARD = RGB565(21, 26, 34);
+static const uint16_t D_TRACK = RGB565(38, 45, 58);
+static const uint16_t D_TEXT = RGB565(243, 245, 249);
+static const uint16_t D_SUB = RGB565(199, 207, 219);
+static const uint16_t D_MUTED = RGB565(138, 148, 166);
+static const uint16_t D_ACCENT = RGB565(90, 200, 250);
+static const uint16_t D_ACCENT_TINT = RGB565(31, 58, 73);
+static const uint16_t D_AMBER = RGB565(255, 181, 71);
+static const uint16_t D_RED = RGB565(255, 92, 108);
+static const uint16_t D_RED_TEXT = RGB565(255, 122, 134);
+static const uint16_t D_RED_CARD = RGB565(58, 18, 25);
+static const uint16_t D_RED_SUB = RGB565(255, 201, 207);
+static const uint16_t D_RED_LINE = RGB565(90, 30, 39);
+static const uint16_t D_GREEN = RGB565(52, 211, 153);
+static const uint16_t D_GREEN_CARD = RGB565(16, 36, 28);
+static const uint16_t D_GREEN_TINT = RGB565(27, 68, 52);
+static const uint16_t D_GREEN_SUB = RGB565(185, 233, 211);
+static const uint16_t D_GEN = RGB565(167, 139, 250);
+static const uint16_t D_SCOPE = RGB565(52, 211, 153);
+static const uint16_t D_PLOT = RGB565(14, 18, 25);
+static const uint16_t D_PLOT_DOT = RGB565(52, 62, 78);
+static const uint16_t D_PLOT_AXIS = RGB565(86, 100, 118);
+
 enum {
     DMM_MODE_AUTO,
     DMM_MODE_DCV,
@@ -1575,30 +1600,6 @@ enum {
     SCOPE_RANGE_FIELD_W = 96,
 };
 
-// One channel's range in the bottom bar. "CH1 2V" fits at full size,
-// "CH1 500mV" does not, so the unit drops to half size -- but only when
-// it has to: a lone "V" at half size reads as a lower case v.
-static void draw_scope_channel_range(uint16_t x, uint16_t y, const char *name,
-                                     uint8_t idx, uint16_t color, uint16_t bg) {
-    char text[12];
-    const char *value;
-    const char *unit;
-
-    scope_vdiv_display(idx, &value, &unit);
-    scope_text_copy(text, name, sizeof(text));
-    ui_text_append(text, " ", sizeof(text));
-    ui_text_append(text, value, sizeof(text));
-    if (lcd_text_width(text, 2) + lcd_text_width(unit, 2) <= SCOPE_RANGE_FIELD_W) {
-        ui_text_append(text, unit, sizeof(text));
-        lcd_text(x, y, text, color, bg, 2);
-        return;
-    }
-    lcd_text(x, y, text, color, bg, 2);
-    // Sat on the digits' own baseline: they stop two rows short of the
-    // bottom of the cell, so a unit hung off the cell would sit low.
-    lcd_text((uint16_t)(x + lcd_text_width(text, 2)), (uint16_t)(y + 5u), unit, color, bg, 1);
-}
-
 static const char *scope_vdiv_menu_label(void) {
     static char label[8];
     const char *value;
@@ -1620,17 +1621,7 @@ static const char *scope_vdiv_chip_label_for_channel(uint8_t idx) {
     return scope_probe_x10[idx] ? scope_vdivs_x10_short[vdiv] : scope_vdivs_short[vdiv];
 }
 
-static void draw_scope_scale_status(uint16_t y, uint16_t bg) {
-    if (scope_ch_enabled[0]) {
-        draw_scope_channel_range(0, y, "CH1", 0, C_CH1, bg);
-    }
-    lcd_text_center(96, y, 72, scope_timebase_label(), C_TEXT, bg, 2);
-    lcd_text_center(168, y, 56, ui.running ? (scope_slow_roll_active() ? "ROLL" : "RUN") : "HOLD",
-                    ui.running ? C_DMM : C_WARN, bg, 2);
-    if (scope_ch_enabled[1]) {
-        draw_scope_channel_range(224, y, "CH2", 1, C_CH2, bg);
-    }
-}
+static void draw_scope_scale_status(uint16_t y, uint16_t bg);
 
 static const char *scope_channel_enable_label(void) {
     return scope_ch_enabled[ui.active_ch == 2u ? 1u : 0u] ? "ON" : "OFF";
@@ -3844,26 +3835,6 @@ static uint8_t dmm_voltage_warning_level(void) {
 // (26-204) instead of the reading card plus stats.
 // ---------------------------------------------------------------------------
 
-static const uint16_t D_BG = RGB565(11, 14, 19);
-static const uint16_t D_CARD = RGB565(21, 26, 34);
-static const uint16_t D_TRACK = RGB565(38, 45, 58);
-static const uint16_t D_TEXT = RGB565(243, 245, 249);
-static const uint16_t D_SUB = RGB565(199, 207, 219);
-static const uint16_t D_MUTED = RGB565(138, 148, 166);
-static const uint16_t D_ACCENT = RGB565(90, 200, 250);
-static const uint16_t D_ACCENT_TINT = RGB565(31, 58, 73);
-static const uint16_t D_AMBER = RGB565(255, 181, 71);
-static const uint16_t D_RED = RGB565(255, 92, 108);
-static const uint16_t D_RED_TEXT = RGB565(255, 122, 134);
-static const uint16_t D_RED_CARD = RGB565(58, 18, 25);
-static const uint16_t D_RED_SUB = RGB565(255, 201, 207);
-static const uint16_t D_RED_LINE = RGB565(90, 30, 39);
-static const uint16_t D_GREEN = RGB565(52, 211, 153);
-static const uint16_t D_GREEN_CARD = RGB565(16, 36, 28);
-static const uint16_t D_GREEN_TINT = RGB565(27, 68, 52);
-static const uint16_t D_GREEN_SUB = RGB565(185, 233, 211);
-static const uint16_t D_GEN = RGB565(167, 139, 250);
-
 enum {
     DMM_X = 8,
     DMM_W = 304,
@@ -5669,6 +5640,156 @@ static void scope_measure_value_for(char out[12], uint8_t idx, uint8_t measure) 
     }
 }
 
+// ---------------------------------------------------------------------------
+// Oscilloscope chrome in the modern style. The traces themselves are drawn
+// by the existing fast code; only what surrounds them changes here.
+// ---------------------------------------------------------------------------
+
+// "20mV" -> "20 mV", "1us" -> "1 µs", "0.090V" -> "0.090 V".
+static void scope_pretty_value(const char *in, char *out, uint8_t size) {
+    uint8_t o = 0;
+    uint8_t spaced = 0;
+    for (; *in && o + 3u < size; ++in) {
+        char c = *in;
+        uint8_t alpha = (uint8_t)((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'));
+        if (alpha && !spaced && o) {
+            out[o++] = ' ';
+            spaced = 1;
+            if (c == 'u' && in[1] >= 'A') {
+                out[o++] = (char)0xC2;
+                out[o++] = (char)0xB5;
+                continue;
+            }
+        }
+        out[o++] = c;
+    }
+    out[o] = 0;
+    // Scope units arrive upper case ("MV", "KHZ"); on a scope M is milli
+    // for volts and seconds, and k/M for hertz.
+    {
+        static const char *const from[] = {"MV", "UV", "KHZ", "MHZ", "HZ", "MS", "US", "NS"};
+        static const char *const to[] = {"mV", "\xC2\xB5V", "kHz", "MHz", "Hz", "ms", "\xC2\xB5s", "ns"};
+        char *unit = out;
+        while (*unit && *unit != ' ') {
+            ++unit;
+        }
+        if (*unit == ' ') {
+            ++unit;
+            for (uint8_t i = 0; i < 8u; ++i) {
+                if (ui_text_equal(unit, from[i])) {
+                    ui_text_copy(unit, to[i], (uint8_t)(size - (uint8_t)(unit - out)));
+                    break;
+                }
+            }
+        }
+    }
+}
+
+static uint16_t scope_tint(uint16_t color, uint16_t under) {
+    return gfx_blend(color, under, 4);
+}
+
+// A pill with an optional small label in front of a value, sized to fit.
+static uint16_t scope_pill_width(const char *label, const char *value) {
+    uint16_t w = (uint16_t)(gfx_text_width(&font_medium, value) + 14u);
+    if (label) {
+        w = (uint16_t)(w + gfx_text_width(&font_small, label) + 5u);
+    }
+    return w;
+}
+
+static void scope_draw_pill(int16_t x, uint16_t y, const char *label, const char *value,
+                            uint16_t fill, uint16_t label_fg, uint16_t value_fg, uint16_t under) {
+    uint16_t w = scope_pill_width(label, value);
+    int16_t tx = (int16_t)(x + 7);
+    gfx_round_rect((uint16_t)x, y, w, 17, 8, fill, under);
+    if (label) {
+        tx = gfx_text(tx, (int16_t)(y + 3u), &font_small, label, label_fg, fill);
+        tx = (int16_t)(tx + 5);
+    }
+    gfx_text(tx, (int16_t)(y + 1u), &font_medium, value, value_fg, fill);
+}
+
+static void scope_channel_range_text(uint8_t idx, char out[16]) {
+    char raw[12];
+    const char *value;
+    const char *unit;
+    scope_vdiv_display(idx, &value, &unit);
+    scope_text_copy(raw, value, sizeof(raw));
+    ui_text_append(raw, unit, sizeof(raw));
+    scope_pretty_value(raw, out, 16);
+}
+
+// Bottom bar: [CH1 20 mV]   [50 ns] [RUN]   [CH2 20 mV]
+static void draw_scope_scale_status(uint16_t y, uint16_t bg) {
+    char ch1[16];
+    char ch2[16];
+    char tb[16];
+    const char *run = ui.running ? (scope_slow_roll_active() ? "ROLL" : "RUN") : "HOLD";
+    uint16_t run_color = ui.running ? D_GREEN : D_AMBER;
+    uint16_t tb_w;
+    uint16_t run_w;
+    int16_t x;
+
+    lcd_rect(0, y, LCD_WIDTH, 19, bg);
+    scope_channel_range_text(0, ch1);
+    scope_channel_range_text(1, ch2);
+    scope_pretty_value(scope_timebase_label(), tb, sizeof(tb));
+
+    scope_draw_pill(8, (uint16_t)(y + 1u), "CH1", scope_ch_enabled[0] ? ch1 : "off",
+                    scope_ch_enabled[0] ? scope_tint(C_CH1, bg) : D_CARD,
+                    scope_ch_enabled[0] ? C_CH1 : D_MUTED, scope_ch_enabled[0] ? D_TEXT : D_MUTED, bg);
+    scope_draw_pill((int16_t)(312 - (int16_t)scope_pill_width("CH2", scope_ch_enabled[1] ? ch2 : "off")),
+                    (uint16_t)(y + 1u), "CH2", scope_ch_enabled[1] ? ch2 : "off",
+                    scope_ch_enabled[1] ? scope_tint(C_CH2, bg) : D_CARD,
+                    scope_ch_enabled[1] ? C_CH2 : D_MUTED, scope_ch_enabled[1] ? D_TEXT : D_MUTED, bg);
+
+    tb_w = scope_pill_width(0, tb);
+    run_w = scope_pill_width(0, run);
+    x = (int16_t)((LCD_WIDTH - (tb_w + 6u + run_w)) / 2u);
+    scope_draw_pill(x, (uint16_t)(y + 1u), 0, tb, D_CARD, D_TEXT, D_TEXT, bg);
+    scope_draw_pill((int16_t)(x + (int16_t)tb_w + 6), (uint16_t)(y + 1u), 0, run,
+                    scope_tint(run_color, bg), run_color, run_color, bg);
+}
+
+// Dotted graticule: dots every 4 px on division lines, a finer dotted
+// centre cross with 1/5-division ticks. Collect pass marks the area once.
+static void scope_draw_graticule(uint16_t gx, uint16_t gy, uint16_t gw, uint16_t gh) {
+    uint16_t cx = (uint16_t)(gx + ((uint32_t)gw * (SCOPE_X_DIVS / 2u)) / SCOPE_X_DIVS);
+    uint16_t cy = (uint16_t)(gy + ((uint32_t)gh * (SCOPE_Y_DIVS / 2u)) / SCOPE_Y_DIVS);
+
+    gfx_round_rect(gx, gy, gw, gh, 10, D_PLOT, D_BG);
+    if (lcd_collecting()) {
+        return;
+    }
+    for (uint8_t div = 1; div < SCOPE_X_DIVS; ++div) {
+        uint16_t x = (uint16_t)(gx + ((uint32_t)gw * div) / SCOPE_X_DIVS);
+        for (uint16_t y = (uint16_t)(gy + 4u); y < (uint16_t)(gy + gh - 3u); y = (uint16_t)(y + 4u)) {
+            lcd_pixel((int16_t)x, (int16_t)y, D_PLOT_DOT);
+        }
+    }
+    for (uint8_t div = 1; div < SCOPE_Y_DIVS; ++div) {
+        uint16_t y = (uint16_t)(gy + ((uint32_t)gh * div) / SCOPE_Y_DIVS);
+        for (uint16_t x = (uint16_t)(gx + 4u); x < (uint16_t)(gx + gw - 3u); x = (uint16_t)(x + 4u)) {
+            lcd_pixel((int16_t)x, (int16_t)y, D_PLOT_DOT);
+        }
+    }
+    for (uint16_t y = (uint16_t)(gy + 3u); y < (uint16_t)(gy + gh - 2u); y = (uint16_t)(y + 2u)) {
+        lcd_pixel((int16_t)cx, (int16_t)y, D_PLOT_AXIS);
+    }
+    for (uint16_t x = (uint16_t)(gx + 3u); x < (uint16_t)(gx + gw - 2u); x = (uint16_t)(x + 2u)) {
+        lcd_pixel((int16_t)x, (int16_t)cy, D_PLOT_AXIS);
+    }
+    for (uint8_t t = 1; t < SCOPE_X_DIVS * 5u; ++t) {
+        uint16_t x = (uint16_t)(gx + ((uint32_t)gw * t) / (SCOPE_X_DIVS * 5u));
+        lcd_rect(x, (uint16_t)(cy - 2u), 1, 5, D_PLOT_AXIS);
+    }
+    for (uint8_t t = 1; t < SCOPE_Y_DIVS * 5u; ++t) {
+        uint16_t y = (uint16_t)(gy + ((uint32_t)gh * t) / (SCOPE_Y_DIVS * 5u));
+        lcd_rect((uint16_t)(cx - 2u), y, 5, 1, D_PLOT_AXIS);
+    }
+}
+
 static void draw_scope_measure_text(uint16_t left,
                                     uint16_t right,
                                     uint16_t y,
@@ -5690,23 +5811,25 @@ static void draw_scope_measure_text(uint16_t left,
     if (measure >= SCOPE_MEASURE_COUNT) {
         measure = SCOPE_MEASURE_VPP;
     }
-    label = scope_measure_labels[measure];
+    {
+        static const char *const pretty_labels[] = {"Vpp", "Vmax", "Vmin", "Vavg", "Vrms", "Freq"};
+        label = measure < 6u ? pretty_labels[measure] : scope_measure_labels[measure];
+    }
     scope_measure_value_for(value, idx, measure);
 
-    label_w = lcd_text_width(label, 1);
-    value_w = lcd_text_width(value, value_scale);
-    total_w = (uint16_t)(label_w + 4u + value_w);
-    if (total_w > width) {
-        value_scale = 1;
-        value_w = lcd_text_width(value, value_scale);
-        total_w = (uint16_t)(label_w + 4u + value_w);
+    {
+        char pretty[16];
+        uint16_t fill = scope_tint(color, D_PLOT);
+        scope_pretty_value(value, pretty, sizeof(pretty));
+        total_w = scope_pill_width(label, pretty);
+        (void)label_w;
+        (void)value_w;
+        (void)value_scale;
+        if (align_right && total_w < width) {
+            x = (uint16_t)(right - total_w);
+        }
+        scope_draw_pill((int16_t)x, y, label, pretty, fill, color, D_TEXT, D_PLOT);
     }
-    if (align_right && total_w < width) {
-        x = (uint16_t)(right - total_w);
-    }
-
-    lcd_text_transparent(x, (uint16_t)(y + (value_scale == 2u ? 4u : 0u)), label, color, 1);
-    lcd_text_transparent((uint16_t)(x + label_w + 4u), y, value, color, value_scale);
 }
 
 static uint8_t scope_measure_enabled_count(uint8_t ch) {
@@ -5879,7 +6002,10 @@ static void draw_scope_hpos_line(int16_t x, uint16_t gy, uint16_t bg, uint8_t ou
     } else if (cx > (int16_t)(LCD_WIDTH - 2u)) {
         cx = (int16_t)(LCD_WIDTH - 2u);
     }
-    lcd_rect((uint16_t)cx, gy, 2, 10, C_TEXT);
+    // A small downward pointer at the top of the plot.
+    for (uint8_t r = 0; r < 5u; ++r) {
+        lcd_rect((uint16_t)(cx - 4 + r), (uint16_t)(gy + 1u + r), (uint16_t)(9u - 2u * r), 1, D_TEXT);
+    }
     draw_scope_hpos_label(cx, gy, bg, outside);
 }
 
@@ -5959,13 +6085,23 @@ static void draw_scope_channel_markers(uint16_t gx,
             draw_scope_move_marker(gx, y, color, label, bg);
             continue;
         }
-        lcd_rect(gx, (uint16_t)y, 6, 2, color);
-        lcd_text(gx >= 7u ? (uint16_t)(gx - 7u) : 0u,
-                 y >= 3 ? (uint16_t)(y - 3) : 0u,
-                 label,
-                 ui.active_ch == i + 1u ? C_TEXT : color,
-                 ui.chrome_visible ? C_BG : bg,
-                 1);
+        {
+            // A small rounded tag on the plot's left edge, pointing at the
+            // channel's zero line; the active channel's tag is outlined.
+            int16_t ty = (int16_t)(y - 6);
+            uint8_t active = ui.active_ch == i + 1u;
+            if (ty < (int16_t)(gy + 1u)) {
+                ty = (int16_t)(gy + 1u);
+            }
+            if (active) {
+                gfx_round_rect((uint16_t)(gx + 1u), (uint16_t)ty, 15, 13, 4, D_TEXT, bg);
+                gfx_round_rect((uint16_t)(gx + 2u), (uint16_t)(ty + 1), 13, 11, 3, color, D_TEXT);
+            } else {
+                gfx_round_rect((uint16_t)(gx + 2u), (uint16_t)(ty + 1), 13, 11, 3, color, bg);
+            }
+            gfx_text_center((int16_t)(gx + 2u), (int16_t)(ty + 1), 13, &font_small, label, D_BG, color);
+            lcd_rect((uint16_t)(gx + 15u), (uint16_t)y, 3, 1, color);
+        }
     }
 }
 
@@ -5996,18 +6132,22 @@ static void draw_scope_trigger_line(uint16_t gx, uint16_t gy, uint16_t gw, uint1
         lcd_rect(x, (uint16_t)y, 5, 1, color);
     }
     scope_format_signed_mv(level, mv);
-    lcd_text((uint16_t)(gx + gw - 58u),
-             (uint16_t)(y > (int16_t)(gy + 9u) ? y - 8 : y + 2),
-             level,
-             color,
-             bg,
-             1);
-    lcd_text((uint16_t)(gx + gw - 10u),
-             (uint16_t)(y > (int16_t)(gy + 9u) ? y - 8 : y + 2),
-             edge,
-             color,
-             bg,
-             1);
+    {
+        char pretty[16];
+        const char *icon = ui.scope_trigger_edge ? ICON_EDGE_FALL_SM : ICON_EDGE_RISE_SM;
+        uint16_t fill = scope_tint(color, bg);
+        uint16_t w;
+        int16_t px;
+        int16_t py = (int16_t)(y > (int16_t)(gy + 18u) ? y - 16 : y + 3);
+
+        scope_pretty_value(level, pretty, sizeof(pretty));
+        w = (uint16_t)(gfx_text_width(&font_small, pretty) + 11u + 4u + 12u);
+        px = (int16_t)(gx + gw - 6u - w);
+        gfx_round_rect((uint16_t)px, (uint16_t)py, w, 14, 7, fill, bg);
+        gfx_text((int16_t)(px + 6), (int16_t)(py + 2), &font_icons, icon, color, fill);
+        gfx_text((int16_t)(px + 21), (int16_t)(py + 1), &font_small, pretty, color, fill);
+    }
+    (void)edge;
 }
 
 #if SCOPE_UI_SAFE_STUB
@@ -6510,15 +6650,14 @@ static void ui_draw_math_waveform(uint16_t gx, uint16_t gy, uint16_t gw, uint16_
 }
 
 static void draw_scope_immersive(void) {
-    const uint16_t grid_bg = RGB565(4, 8, 11);
+    const uint16_t grid_bg = D_PLOT;
     uint16_t gx = 8;
     uint16_t gy = 28;
     uint16_t gw = 304;
     uint16_t gh = 190;
 
-    lcd_rect(0, 0, LCD_WIDTH, LCD_HEIGHT, grid_bg);
-    draw_micro_status(6, 6, grid_bg);
-    draw_battery_status_overlay(grid_bg);
+    lcd_rect(0, 0, LCD_WIDTH, LCD_HEIGHT, D_BG);
+    ui_draw_status_bar("Oscilloscope", D_SCOPE);
 
 #if SCOPE_UI_SAFE_STUB
     scope_sanitize_state();
@@ -6554,17 +6693,7 @@ static void draw_scope_immersive(void) {
     return;
 #endif
 
-    lcd_frame(gx, gy, gw, gh, C_GRID);
-    for (uint8_t div = 1; div < SCOPE_X_DIVS; ++div) {
-        uint16_t x = (uint16_t)(gx + ((uint32_t)gw * div) / SCOPE_X_DIVS);
-        lcd_rect(x, (uint16_t)(gy + 1u), 1, (uint16_t)(gh - 2u), C_GRID);
-    }
-    for (uint8_t div = 1; div < SCOPE_Y_DIVS; ++div) {
-        uint16_t y = (uint16_t)(gy + ((uint32_t)gh * div) / SCOPE_Y_DIVS);
-        lcd_rect((uint16_t)(gx + 1u), y, (uint16_t)(gw - 2u), 1, C_GRID);
-    }
-    lcd_rect((uint16_t)(gx + ((uint32_t)gw * 6u) / SCOPE_X_DIVS), (uint16_t)(gy + 1u), 2, (uint16_t)(gh - 2u), RGB565(67, 85, 95));
-    lcd_rect((uint16_t)(gx + 1u), (uint16_t)(gy + ((uint32_t)gh * 4u) / SCOPE_Y_DIVS), (uint16_t)(gw - 2u), 2, RGB565(67, 85, 95));
+    scope_draw_graticule(gx, gy, gw, gh);
 
     if (scope_frame_valid || !scope_hw_enabled() || scope_fft_src == 4u) {
         if (ui.scope_display == SCOPE_DISPLAY_XY) {
@@ -6597,10 +6726,11 @@ static void draw_scope_immersive(void) {
         draw_scope_hpos_indicator(gx, gy, gw, gh, grid_bg);
         draw_scope_measure_readout((uint16_t)(gx + 6u), gy, (uint16_t)(gw - 12u), gh, grid_bg);
     } else {
-        lcd_text_center(gx, (uint16_t)(gy + 82u), gw, scope_hw_ready() ? "WAIT" : "FPGA", C_MUTED, grid_bg, 2);
+        gfx_text_center((int16_t)gx, (int16_t)(gy + 80u), gw, &font_medium,
+                        scope_hw_ready() ? "Waiting for trigger" : "Starting FPGA", D_MUTED, grid_bg);
     }
 
-    draw_scope_scale_status(220, grid_bg);
+    draw_scope_scale_status(220, D_BG);
     ui_draw_math_menu();
 }
 
@@ -7563,11 +7693,14 @@ static void draw_settings_tile(uint8_t row, uint16_t x, uint16_t y, uint16_t w, 
     settings_display_value(row, value);
     gfx_text((int16_t)(x + 10u), (int16_t)(y + 35u), &font_medium, value, selected ? accent : D_TEXT, bg);
 
-    // Level rows get a five-step meter beside the value.
+    // Level rows get a step meter beside the value: one bar per level above
+    // the lowest setting for beep (OFF has none), one per setting for
+    // brightness (DIM is already one step of light).
     if (row == 0u || row == 1u) {
+        uint8_t bars = row == 0u ? (uint8_t)(SETTINGS_LEVEL_COUNT - 1u) : (uint8_t)SETTINGS_LEVEL_COUNT;
         uint8_t level = row == 0u ? ui_settings.beep_level : (uint8_t)(ui_settings.brightness_level + 1u);
-        for (uint8_t i = 0; i < 5u; ++i) {
-            uint16_t bx = (uint16_t)(x + w - 12u - (4u - i) * 6u - 4u);
+        for (uint8_t i = 0; i < bars; ++i) {
+            uint16_t bx = (uint16_t)(x + w - 12u - (uint16_t)(bars - 1u - i) * 6u - 4u);
             uint16_t bh = (uint16_t)(4u + i * 2u);
             gfx_round_rect(bx, (uint16_t)(y + 48u - bh), 4, bh, 1, i < level ? accent : D_TRACK, bg);
         }
@@ -7732,7 +7865,7 @@ static void ui_draw_battery_status_scene(void) {
     } else if (ui.chrome_visible) {
         draw_battery_status_header();
     } else if (ui.mode == UI_MODE_SCOPE) {
-        draw_battery_status_overlay(RGB565(4, 8, 11));
+        ui_draw_status_bar("Oscilloscope", D_SCOPE);
     } else {
         draw_battery_status_overlay(C_BG);
     }

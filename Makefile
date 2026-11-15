@@ -144,7 +144,7 @@ $(BUILD_ROOT)/tests/settings: tests/settings.c src/settings.c src/settings.h src
 # Render the multimeter screen states on the host: build/dmm-preview/*.ppm
 dmm-preview: tools/dmm_preview.c src/ui.c src/dmm.c src/gfx.c src/ui_fonts.c
 	@mkdir -p $(BUILD_ROOT)/dmm-preview
-	$(CLANG) -std=c11 -O1 -Wall -Wextra -ffunction-sections -fdata-sections -DHW_TARGET_HW40=1 -DEXPECTED_FW_VERSION='"$(VERSION)"' $< $(HOST_TEST_LINK) -o $(BUILD_ROOT)/dmm-preview/run
+	$(CLANG) -std=c11 -O1 -Wall -Wextra -ffunction-sections -fdata-sections -DHW_TARGET_HW40=1 -DSCOPE_UI_SAFE_STUB=0 -DEXPECTED_FW_VERSION='"$(VERSION)"' $< $(HOST_TEST_LINK) -o $(BUILD_ROOT)/dmm-preview/run
 	$(BUILD_ROOT)/dmm-preview/run
 
 $(LLD_DIR)/ld.lld:

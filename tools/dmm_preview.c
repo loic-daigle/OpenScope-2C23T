@@ -17,6 +17,7 @@
 #include "../src/font.c"
 #include "../src/gfx.c"
 #include "../src/ui_fonts.c"
+#include "../src/fft.c"
 
 static uint16_t fb[LCD_WIDTH * LCD_HEIGHT];
 
@@ -35,14 +36,23 @@ void lcd_frame(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t c) {
     lcd_rect(x, y, 1, h, c); lcd_rect((uint16_t)(x + w - 1), y, 1, h, c);
 }
 void lcd_line(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t c) { gfx_line(x0, y0, x1, y1, 1, c, c); }
-void lcd_text(uint16_t x, uint16_t y, const char *t, uint16_t fg, uint16_t bg, uint8_t s) {
-    (void)x; (void)y; (void)t; (void)fg; (void)bg; (void)s;
+// The legacy 5x7 font, drawn exactly like display.c does.
+static void old_char(uint16_t x, uint16_t y, char c, uint16_t fg, int32_t bg, uint8_t sc) {
+    const uint8_t *g = font5x7_get(c);
+    if (bg >= 0) lcd_rect(x, y, (uint16_t)(6u * sc), (uint16_t)(8u * sc), (uint16_t)bg);
+    for (uint8_t r = 0; r < 7; ++r)
+        for (uint8_t col = 0; col < 5; ++col)
+            if (g[col] & (1u << r)) lcd_rect((uint16_t)(x + col * sc), (uint16_t)(y + r * sc), sc, sc, fg);
 }
-void lcd_text_transparent(uint16_t x, uint16_t y, const char *t, uint16_t fg, uint8_t s) {
-    (void)x; (void)y; (void)t; (void)fg; (void)s;
+void lcd_text(uint16_t x, uint16_t y, const char *t, uint16_t fg, uint16_t bg, uint8_t sc) {
+    for (; *t; ++t, x = (uint16_t)(x + 6u * sc)) old_char(x, y, *t, fg, bg, sc);
 }
-void lcd_text_center(uint16_t x, uint16_t y, uint16_t w, const char *t, uint16_t fg, uint16_t bg, uint8_t s) {
-    (void)x; (void)y; (void)w; (void)t; (void)fg; (void)bg; (void)s;
+void lcd_text_transparent(uint16_t x, uint16_t y, const char *t, uint16_t fg, uint8_t sc) {
+    for (; *t; ++t, x = (uint16_t)(x + 6u * sc)) old_char(x, y, *t, fg, -1, sc);
+}
+void lcd_text_center(uint16_t x, uint16_t y, uint16_t w, const char *t, uint16_t fg, uint16_t bg, uint8_t sc) {
+    uint16_t tw = (uint16_t)(strlen(t) * 6u * sc);
+    lcd_text(tw >= w ? x : (uint16_t)(x + (w - tw) / 2u), y, t, fg, bg, sc);
 }
 uint16_t lcd_text_width(const char *t, uint8_t s) { return (uint16_t)(strlen(t) * 6u * s); }
 void lcd_render(lcd_render_fn_t fn, void *ctx) { fn(ctx); }
@@ -54,6 +64,8 @@ static uint8_t charging;
 uint8_t battery_is_charging(void) { return charging; }
 uint8_t usb_cdc_is_configured(void) { return charging; }
 
+uint8_t scope_hw_enabled(void) { return 1; }
+uint8_t scope_hw_ready(void) { return 1; }
 uint32_t load_counter_read(void) { return 0; }
 uint32_t load_counter_elapsed(uint32_t start, uint32_t end) { return end - start; }
 void fw_update_status(fw_update_status_t *status) { memset(status, 0, sizeof(*status)); }
@@ -103,6 +115,33 @@ static void enter(uint8_t mode) {
     dmm_hold_active = dmm_rel_active = 0;
     dmm_live_wire_alert = 0;
     dmm_stats_reset();
+}
+
+// Feed a synthetic capture through the firmware's own frame processing,
+// so traces, statistics and measurements are what the device would show.
+static void scope_fill(void) {
+    for (uint32_t i = 0; i < SCOPE_SAMPLE_BYTES / 2u; ++i) {
+        double t = (double)i / 100.0;
+        scope_capture_samples[i * 2u] = (uint8_t)(128.0 + 60.0 * __builtin_sin(t * 6.2831853));
+        scope_capture_samples[i * 2u + 1u] = (uint8_t)(((i / 70u) & 1u) ? 150 : 106);
+    }
+    scope_copy_capture_samples();
+    scope_frame_valid = 1;
+    ++scope_frame_id;
+    for (uint8_t k = 0; k < 8u; ++k) {
+        scope_compute_stats();
+    }
+    scope_trace_invalidate();
+}
+
+static void scope_shot(const char *name) {
+    ui.mode = UI_MODE_SCOPE;
+    ui.overlay = UI_OVERLAY_NONE;
+    ui.chrome_visible = 0;
+    scope_fill();
+    draw_scope_immersive();
+    save(name);
+    ui.mode = UI_MODE_DMM;
 }
 
 static void shot(const char *name) {
@@ -160,6 +199,17 @@ int main(void) {
         snprintf(name, sizeof(name), "menu-%u", (unsigned)i + 1u);
         save(name);
     }
+    ui.scope_timebase = 8;
+    ui.running = 1;
+    scope_shot("scope-1");
+    ui.running = 0;
+    ui.active_ch = 2;
+    ui.scope_trigger_edge = 1;
+    scope_shot("scope-2");
+    ui.running = 1;
+    ui.active_ch = 1;
+    ui.scope_trigger_edge = 0;
+
     ui.overlay = UI_OVERLAY_SETTINGS;
     ui.storage_known = 1; ui.storage_total_kb = 8192; ui.storage_free_kb = 7373;
     for (uint8_t i = 0; i < 6u; ++i) {

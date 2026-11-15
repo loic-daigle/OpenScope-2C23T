@@ -28,3 +28,5 @@
 #define ICON_STORAGE_SM "\xEE\x80\x97"
 #define ICON_OK_MD "\xEE\x80\x98"
 #define ICON_ERROR_MD "\xEE\x80\x99"
+#define ICON_EDGE_RISE_SM "\xEE\x80\x9A"
+#define ICON_EDGE_FALL_SM "\xEE\x80\x9B"
