@@ -151,5 +151,15 @@ int main(void) {
 
     enter(DMM_MODE_DCV);
     shot("09-no-reading");
+
+    ui.overlay = UI_OVERLAY_MODE_MENU;
+    for (uint8_t i = 0; i < 4u; ++i) {
+        char name[32];
+        ui.menu_index = i;
+        draw_mode_menu();
+        snprintf(name, sizeof(name), "menu-%u", (unsigned)i + 1u);
+        save(name);
+    }
+    ui.overlay = UI_OVERLAY_NONE;
     return 0;
 }

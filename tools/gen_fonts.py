@@ -23,7 +23,8 @@ import sys
 
 from PIL import Image, ImageFont
 
-ICONS = ["check_xl", "zap_xl", "alert_sm", "beep_sm", "pause_sm", "plug_sm", "charge_sm", "usb_sm"]
+ICONS = ["check_xl", "zap_xl", "alert_sm", "beep_sm", "pause_sm", "plug_sm", "charge_sm", "usb_sm",
+         "multimeter_md", "scope_md", "generator_md", "settings_md", "chevron_l_sm", "chevron_r_sm"]
 
 ASCII = "".join(chr(c) for c in range(32, 127))
 EXTRA = "Ωµ°Δ"  # Ohm, micro, degree, Delta

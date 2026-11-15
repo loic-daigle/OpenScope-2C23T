@@ -12,7 +12,18 @@ const CUSTOM = {
   bolt: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" ' +
         'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
         '<path d="M13.5 2 4.5 13.5h6.5L9.5 22l10-12.5h-6.5L13.5 2z"/></svg>',
+  // Menu tools.
+  multimeter: svg24('<rect x="5" y="2" width="14" height="20" rx="2.5"/><rect x="8" y="5" width="8" height="5" rx="1"/>' +
+                    '<circle cx="12" cy="15.5" r="2.5"/>'),
+  scope: svg24('<rect x="2" y="4" width="20" height="16" rx="2.5"/>' +
+               '<path d="M5 12c1.5-4.5 3-4.5 4.5 0s3 4.5 4.5 0 3-4.5 4.5 0"/>'),
+  generator: svg24('<path d="M2 16h3.5V8h6v8h6V8H21"/><path d="M2 20h20" opacity="0.45"/>'),
 };
+
+function svg24(body) {
+  return '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" ' +
+         'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + body + '</svg>';
+}
 
 // name in the firmware, icon (Lucide name or CUSTOM key), pixel size, stroke width (24-unit space)
 const ICONS = [
@@ -24,6 +35,12 @@ const ICONS = [
   ['plug_sm', 'plug', 12, 2.4],
   ['charge_sm', 'bolt', 11, 2.4],
   ['usb_sm', 'usb', 12, 2.2],
+  ['multimeter_md', 'multimeter', 26, 2.0],
+  ['scope_md', 'scope', 26, 2.0],
+  ['generator_md', 'generator', 26, 2.0],
+  ['settings_md', 'settings', 26, 2.0],
+  ['chevron_l_sm', 'chevron-left', 11, 2.6],
+  ['chevron_r_sm', 'chevron-right', 11, 2.6],
 ];
 
 (async () => {

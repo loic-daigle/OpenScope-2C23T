@@ -724,7 +724,6 @@ static const char *const gen_param_labels[] = {"WAVE", "FREQ", "DUTY", "AMP"};
 // own copy, which is how "KHZ" survived in some of them long after the
 // rest of the screen had learned to spell it.
 static const char *const freq_unit_labels[] = {"Hz", "kHz", "MHz"};
-static const char *const menu_labels[] = {"MULTIMETER", "OSCILLOSCOPE", "SIGNAL GENERATOR", "SETTINGS"};
 static const char *const settings_row_labels[] = {
     "BEEP", "DISPLAY", "START", "SLEEP", "BOOTLOADER", "RESET", "INFO",
 };
@@ -4108,7 +4107,7 @@ static void dmm_draw_pill(int16_t right, uint16_t y, const char *label, uint16_t
     dmm_draw_pill_icon(right, y, 0, label, fill, fg, under, left_out);
 }
 
-static void dmm_draw_status_bar(void) {
+static void ui_draw_status_bar(const char *title, uint16_t dot) {
     char pct[5];
     uint8_t pct_value = battery_percent();
     uint8_t low = battery_low_alert();
@@ -4117,8 +4116,8 @@ static void dmm_draw_status_bar(void) {
     int16_t x;
 
     lcd_rect(0, 0, LCD_WIDTH, DMM_STATUS_H, D_BG);
-    gfx_round_rect(8, 8, 6, 6, 3, D_ACCENT, D_BG);
-    gfx_text(19, 5, &font_small, "Multimeter", D_TEXT, D_BG);
+    gfx_round_rect(8, 8, 6, 6, 3, dot, D_BG);
+    gfx_text(19, 5, &font_small, title, D_TEXT, D_BG);
 
     gfx_round_rect(294, 7, 17, 9, 2, low ? fill_color : D_MUTED, D_BG);
     gfx_round_rect(295, 8, 15, 7, 1, D_BG, D_MUTED);
@@ -4143,6 +4142,10 @@ static void dmm_draw_status_bar(void) {
         int16_t left;
         dmm_draw_pill(x, 4, "GEN", D_GEN, D_BG, D_BG, &left);
     }
+}
+
+static void dmm_draw_status_bar(void) {
+    ui_draw_status_bar("Multimeter", D_ACCENT);
 }
 
 static uint8_t dmm_auto_range_display(void) {
@@ -7276,110 +7279,78 @@ static uint16_t menu_item_color(uint8_t index) {
     return C_DMM;
 }
 
-static void draw_menu_icon(uint8_t index, uint16_t x, uint16_t y, uint16_t color, uint16_t bg) {
-    if (index == 0u) {
-        lcd_frame((uint16_t)(x + 2u), y, 42, 52, color);
-        lcd_rect((uint16_t)(x + 8u), (uint16_t)(y + 6u), 30, 13, bg);
-        lcd_frame((uint16_t)(x + 8u), (uint16_t)(y + 6u), 30, 13, color);
-        lcd_text((uint16_t)(x + 13u), (uint16_t)(y + 24u), "V", color, bg, 1);
-        lcd_text((uint16_t)(x + 25u), (uint16_t)(y + 24u), "OHM", color, bg, 1);
-        for (uint8_t i = 0; i < 4u; ++i) {
-            uint16_t px = (uint16_t)(x + 7u + i * 9u);
-            lcd_frame(px, (uint16_t)(y + 40u), 6, 6, color);
-            lcd_rect((uint16_t)(px + 2u), (uint16_t)(y + 42u), 2, 2, color);
-        }
-    } else if (index == 1u) {
-        lcd_text((uint16_t)(x + 1u), y, "CH1", C_CH1, bg, 1);
-        lcd_text((uint16_t)(x + 25u), y, "CH2", C_CH2, bg, 1);
-        lcd_line((int16_t)(x + 9u), (int16_t)(y + 11u), (int16_t)(x + 9u), (int16_t)(y + 17u), C_CH1);
-        lcd_line((int16_t)(x + 33u), (int16_t)(y + 11u), (int16_t)(x + 33u), (int16_t)(y + 17u), C_CH2);
-        lcd_line((int16_t)(x + 9u), (int16_t)(y + 17u), (int16_t)(x + 13u), (int16_t)(y + 13u), C_CH1);
-        lcd_line((int16_t)(x + 9u), (int16_t)(y + 17u), (int16_t)(x + 5u), (int16_t)(y + 13u), C_CH1);
-        lcd_line((int16_t)(x + 33u), (int16_t)(y + 17u), (int16_t)(x + 37u), (int16_t)(y + 13u), C_CH2);
-        lcd_line((int16_t)(x + 33u), (int16_t)(y + 17u), (int16_t)(x + 29u), (int16_t)(y + 13u), C_CH2);
-        lcd_frame(x, (uint16_t)(y + 18u), 46, 34, color);
-        for (uint16_t gx = (uint16_t)(x + 11u); gx < (uint16_t)(x + 44u); gx = (uint16_t)(gx + 11u)) {
-            lcd_rect(gx, (uint16_t)(y + 19u), 1, 32, C_GRID);
-        }
-        for (uint16_t gy = (uint16_t)(y + 27u); gy < (uint16_t)(y + 50u); gy = (uint16_t)(gy + 8u)) {
-            lcd_rect((uint16_t)(x + 1u), gy, 44, 1, C_GRID);
-        }
-        lcd_line((int16_t)(x + 4u), (int16_t)(y + 42u), (int16_t)(x + 12u), (int16_t)(y + 29u), C_CH1);
-        lcd_line((int16_t)(x + 12u), (int16_t)(y + 29u), (int16_t)(x + 22u), (int16_t)(y + 43u), C_CH1);
-        lcd_line((int16_t)(x + 22u), (int16_t)(y + 43u), (int16_t)(x + 32u), (int16_t)(y + 28u), C_CH1);
-        lcd_line((int16_t)(x + 32u), (int16_t)(y + 28u), (int16_t)(x + 42u), (int16_t)(y + 41u), C_CH1);
-    } else if (index == 2u) {
-        lcd_text((uint16_t)(x + 5u), y, "DDS", C_TEXT, bg, 1);
-        lcd_line((int16_t)(x + 38u), (int16_t)(y + 16u), (int16_t)(x + 38u), (int16_t)(y + 7u), C_TEXT);
-        lcd_line((int16_t)(x + 38u), (int16_t)(y + 7u), (int16_t)(x + 34u), (int16_t)(y + 11u), C_TEXT);
-        lcd_line((int16_t)(x + 38u), (int16_t)(y + 7u), (int16_t)(x + 42u), (int16_t)(y + 11u), C_TEXT);
-        lcd_frame(x, (uint16_t)(y + 18u), 46, 34, color);
-        lcd_line((int16_t)(x + 5u), (int16_t)(y + 43u), (int16_t)(x + 11u), (int16_t)(y + 43u), color);
-        lcd_line((int16_t)(x + 11u), (int16_t)(y + 43u), (int16_t)(x + 11u), (int16_t)(y + 30u), color);
-        lcd_line((int16_t)(x + 11u), (int16_t)(y + 30u), (int16_t)(x + 21u), (int16_t)(y + 30u), color);
-        lcd_line((int16_t)(x + 21u), (int16_t)(y + 30u), (int16_t)(x + 21u), (int16_t)(y + 43u), color);
-        lcd_line((int16_t)(x + 21u), (int16_t)(y + 43u), (int16_t)(x + 33u), (int16_t)(y + 43u), color);
-        lcd_line((int16_t)(x + 33u), (int16_t)(y + 43u), (int16_t)(x + 33u), (int16_t)(y + 30u), color);
-        lcd_line((int16_t)(x + 33u), (int16_t)(y + 30u), (int16_t)(x + 41u), (int16_t)(y + 30u), color);
-    } else {
-        static const int8_t outer[][2] = {
-            {19, 10}, {27, 10}, {28, 16}, {31, 17}, {36, 13}, {41, 18},
-            {37, 23}, {38, 26}, {43, 26}, {43, 30}, {38, 30}, {37, 33},
-            {41, 38}, {36, 43}, {31, 39}, {28, 40}, {27, 46}, {19, 46},
-            {18, 40}, {15, 39}, {10, 43}, {5, 38}, {9, 33}, {8, 30},
-            {3, 30}, {3, 26}, {8, 26}, {9, 23}, {5, 18}, {10, 13},
-            {15, 17}, {18, 16},
-        };
-        static const int8_t inner[][2] = {
-            {23, 20}, {28, 22}, {31, 25}, {32, 28}, {31, 31}, {28, 34},
-            {23, 36}, {18, 34}, {15, 31}, {14, 28}, {15, 25}, {18, 22},
-        };
-        for (uint8_t i = 0; i < (uint8_t)(sizeof(outer) / sizeof(outer[0])); ++i) {
-            uint8_t next = (uint8_t)((i + 1u) % (uint8_t)(sizeof(outer) / sizeof(outer[0])));
-            lcd_line((int16_t)(x + outer[i][0]), (int16_t)(y + outer[i][1]),
-                     (int16_t)(x + outer[next][0]), (int16_t)(y + outer[next][1]),
-                     color);
-        }
-        for (uint8_t i = 0; i < (uint8_t)(sizeof(inner) / sizeof(inner[0])); ++i) {
-            uint8_t next = (uint8_t)((i + 1u) % (uint8_t)(sizeof(inner) / sizeof(inner[0])));
-            lcd_line((int16_t)(x + inner[i][0]), (int16_t)(y + inner[i][1]),
-                     (int16_t)(x + inner[next][0]), (int16_t)(y + inner[next][1]),
-                     color);
-        }
-    }
-}
+// ---------------------------------------------------------------------------
+// Main menu: a 2x2 grid of tool cards in the multimeter screen's style.
+// ---------------------------------------------------------------------------
 
-static void draw_mode_menu_item(uint8_t index, uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
+typedef struct {
+    const char *icon;
+    const char *title;
+    const char *subtitle;
+    uint16_t accent;
+    uint16_t tint;
+} menu_card_t;
+
+static const menu_card_t menu_cards[4] = {
+    {ICON_MULTIMETER_MD, "Multimeter", "Volts, ohms, current", RGB565(90, 200, 250), RGB565(31, 58, 73)},
+    {ICON_SCOPE_MD, "Oscilloscope", "2 channels, FFT, math", RGB565(52, 211, 153), RGB565(22, 56, 44)},
+    {ICON_GENERATOR_MD, "Signal Generator", "Waves, sweep, CSV", RGB565(167, 139, 250), RGB565(49, 40, 82)},
+    {ICON_SETTINGS_MD, "Settings", "Display, sound, storage", RGB565(255, 181, 71), RGB565(66, 48, 20)},
+};
+
+static void draw_mode_menu_card(uint8_t index) {
+    enum { W = 148, H = 84, GAP = 8, X0 = 8, Y0 = 30 };
+    const menu_card_t *card = &menu_cards[index];
     uint8_t selected = ui.menu_index == index;
-    uint16_t accent = menu_item_color(index);
-    uint16_t bg = selected ? C_PANEL_2 : C_PANEL;
-    uint16_t fg = selected ? C_TEXT : C_MUTED;
+    uint16_t x = (uint16_t)(X0 + (index % 2u) * (W + GAP));
+    uint16_t y = (uint16_t)(Y0 + (index / 2u) * (H + GAP));
+    uint16_t bg = selected ? RGB565(30, 37, 48) : D_CARD;
 
-    lcd_rect(x, y, w, h, bg);
-    lcd_frame(x, y, w, h, selected ? accent : C_GRID);
-    lcd_rect(x, y, w, 5, accent);
-    draw_menu_icon(index, (uint16_t)(x + (w - 46u) / 2u), (uint16_t)(y + 34u), selected ? accent : C_MUTED, bg);
-    if (index == 2u) {
-        lcd_text_center(x, (uint16_t)(y + h - 36u), w, "SIGNAL", fg, bg, 1);
-        lcd_text_center(x, (uint16_t)(y + h - 24u), w, "GENERATOR", fg, bg, 1);
-    } else {
-        lcd_text_center(x, (uint16_t)(y + h - 30u), w, menu_labels[index], fg, bg, 1);
-    }
     if (selected) {
-        lcd_rect((uint16_t)(x + 8u), (uint16_t)(y + h - 11u), (uint16_t)(w - 16u), 4, accent);
+        gfx_round_rect(x, y, W, H, 14, card->accent, D_BG);
+        gfx_round_rect((uint16_t)(x + 2u), (uint16_t)(y + 2u), W - 4u, H - 4u, 12, bg, card->accent);
+    } else {
+        gfx_round_rect(x, y, W, H, 14, bg, D_BG);
     }
+
+    // Icon tile: tinted when idle, solid accent when selected.
+    gfx_round_rect((uint16_t)(x + 12u), (uint16_t)(y + 11u), 36, 36, 10,
+                   selected ? card->accent : card->tint, bg);
+    gfx_text((int16_t)(x + 17u), (int16_t)(y + 16u), &font_icons, card->icon,
+             selected ? D_BG : card->accent, selected ? card->accent : card->tint);
+
+    if (selected) {
+        int16_t left;
+        dmm_draw_pill_icon((int16_t)(x + W - 10u), (uint16_t)(y + 11u), 0, "OK", card->tint, card->accent, bg, &left);
+    }
+
+    gfx_text((int16_t)(x + 12u), (int16_t)(y + 48u), &font_medium, card->title, selected ? D_TEXT : D_SUB, bg);
+    gfx_text((int16_t)(x + 12u), (int16_t)(y + 64u), &font_small, card->subtitle, D_MUTED, bg);
 }
 
 static void draw_mode_menu(void) {
-    lcd_rect(0, 0, LCD_WIDTH, LCD_HEIGHT, C_BG);
-    draw_battery_status_overlay(C_BG);
+    enum { HINT_Y = 216 };
+    int16_t x;
 
-    lcd_text(14, 18, "MENU", C_TEXT, C_BG, 3);
+    lcd_rect(0, 0, LCD_WIDTH, LCD_HEIGHT, D_BG);
+    ui_draw_status_bar("Menu", D_TEXT);
+    for (uint8_t i = 0; i < 4u; ++i) {
+        draw_mode_menu_card(i);
+    }
 
-    draw_mode_menu_item(0, 6, 62, 74, 154);
-    draw_mode_menu_item(1, 86, 62, 74, 154);
-    draw_mode_menu_item(2, 166, 62, 74, 154);
-    draw_mode_menu_item(3, 246, 62, 68, 154);
+    // Key hint, centred: [<] [>] choose   OK open
+    {
+        uint16_t w = (uint16_t)(11u + 2u + 11u + 6u + gfx_text_width(&font_small, "choose") + 16u +
+                                gfx_text_width(&font_small, "OK") + 6u + 4u + gfx_text_width(&font_small, "open"));
+        x = (int16_t)((LCD_WIDTH - w) / 2u);
+        x = gfx_text(x, HINT_Y + 1, &font_icons, ICON_CHEVRON_L_SM, D_SUB, D_BG);
+        x = gfx_text((int16_t)(x + 2), HINT_Y + 1, &font_icons, ICON_CHEVRON_R_SM, D_SUB, D_BG);
+        x = gfx_text((int16_t)(x + 6), HINT_Y, &font_small, "choose", D_MUTED, D_BG);
+        x = (int16_t)(x + 16);
+        gfx_round_rect((uint16_t)x, HINT_Y - 1u, (uint16_t)(gfx_text_width(&font_small, "OK") + 8u), 15, 7, D_TRACK, D_BG);
+        x = gfx_text((int16_t)(x + 4), HINT_Y, &font_small, "OK", D_SUB, D_TRACK);
+        gfx_text((int16_t)(x + 10), HINT_Y, &font_small, "open", D_MUTED, D_BG);
+    }
 }
 
 static const char *startup_label(void) {
@@ -7682,7 +7653,9 @@ static void ui_draw_dmm_reading_scene(void) {
 }
 
 static void ui_draw_battery_status_scene(void) {
-    if (ui.mode == UI_MODE_DMM && ui.overlay == UI_OVERLAY_NONE) {
+    if (ui.overlay == UI_OVERLAY_MODE_MENU) {
+        ui_draw_status_bar("Menu", D_TEXT);
+    } else if (ui.mode == UI_MODE_DMM && ui.overlay == UI_OVERLAY_NONE) {
         dmm_draw_status_bar();
     } else if (ui.chrome_visible) {
         draw_battery_status_header();
