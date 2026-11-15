@@ -12,6 +12,7 @@
 #include "usb_msc.h"
 #include "bootloader.h"
 #include "fft.h"
+#include "gfx.h"
 #include "arb_csv.h"
 
 #include <stdint.h>
@@ -410,7 +411,6 @@ static char dmm_rel_unit[6];
 static char dmm_rel_value[12];
 static char dmm_rel_ref_value[10];
 static char dmm_low_current_value[10];
-static char dmm_status_detail[18];
 static settings_state_t ui_settings;
 
 static void ui_settings_copy(settings_state_t *dst, const settings_state_t *src) {
@@ -603,16 +603,6 @@ enum {
     SCOPE_MEASURE_COUNT,
 };
 
-static const char *const dmm_mode_names[] = {
-    "AUTO DETECT", "DC VOLTAGE", "AC VOLTAGE", "RESISTANCE",
-    "DIODE", "CAPACITANCE", "LIVE WIRE", "CONTINUITY",
-    "TEMPERATURE", "AC HIGH CURR", "DC HIGH CURR",
-    "AC LOW CURR", "DC LOW CURR",
-};
-static const char *const dmm_mode_short[] = {
-    "AUTO", "DCV", "ACV", "RES", "DIODE", "CAP", "LIVE",
-    "CONT", "TEMP", "AC HI", "DC HI", "AC LO", "DC LO",
-};
 static const char *const dmm_values[] = {
     "12.346", "12.346", "0.218", "1.204", "0.624", "0.047",
     "LIVE", "0.000", "23.8", "0.000", "0.000", "0.000", "0.000",
@@ -2622,73 +2612,7 @@ static uint8_t dmm_group_selected(uint8_t group) {
     return ui.dmm_mode >= DMM_MODE_AC_HI_CURR;
 }
 
-static const char *dmm_group_value(uint8_t group) {
-    if (dmm_group_selected(group)) {
-        return dmm_mode_short[ui.dmm_mode];
-    }
-    if (group == 0u) {
-        return "DCV ACV RES";
-    }
-    if (group == 1u) {
-        return "DIODE CAP";
-    }
-    if (group == 2u) {
-        return "LIVE TEMP";
-    }
-    return "DC AC";
-}
-
-static void draw_dmm_selected_group_value(uint16_t x, uint16_t y, uint16_t w, const char *value, uint16_t bg) {
-    uint16_t text_w = lcd_text_width(value, 2);
-    uint16_t text_x = (uint16_t)(x + (w > text_w ? (w - text_w) / 2u : 0u));
-    uint16_t underline_w = text_w;
-    uint16_t underline_x;
-
-    if (underline_w > w - 12u) {
-        underline_w = (uint16_t)(w - 12u);
-    }
-    underline_x = (uint16_t)(x + (w - underline_w) / 2u);
-    lcd_text(text_x, (uint16_t)(y + 13u), value, C_TEXT, bg, 2);
-    lcd_rect(underline_x, (uint16_t)(y + 29u), underline_w, 2, C_TEXT);
-}
-
-static void draw_dmm_group_chip(uint16_t x, uint16_t y, uint16_t w, uint8_t group, const char *label) {
-    uint8_t active = dmm_group_selected(group);
-    uint16_t bg = active ? C_DMM : C_PANEL_2;
-    uint16_t fg = active ? C_BG : C_MUTED;
-
-    lcd_rect(x, y, w, 32, bg);
-    lcd_rect(x, y, w, 2, C_DMM);
-    lcd_text((uint16_t)(x + 6u), (uint16_t)(y + 4u), label, fg, bg, 1);
-    if (active) {
-        draw_dmm_selected_group_value(x, y, w, dmm_group_value(group), bg);
-    } else if (group == 3u) {
-        lcd_text_center(x, (uint16_t)(y + 13u), w, "HI LO", fg, bg, 1);
-        lcd_text_center(x, (uint16_t)(y + 23u), w, "DC AC", fg, bg, 1);
-    } else {
-        lcd_text_center(x, (uint16_t)(y + 18u), w, dmm_group_value(group), fg, bg, 1);
-    }
-}
-
-static void draw_dmm_softkeys(void) {
-    lcd_rect(0, Y_SOFT, LCD_WIDTH, H_SOFT, C_BG);
-    draw_dmm_group_chip(UI_PARAM_ROW_X, (uint16_t)(Y_SOFT + 4u), UI_PARAM_CHIP_W, 0, "V/OHM");
-    draw_dmm_group_chip((uint16_t)(UI_PARAM_ROW_X + UI_PARAM_CHIP_W + UI_PARAM_CHIP_GAP),
-                        (uint16_t)(Y_SOFT + 4u),
-                        UI_PARAM_CHIP_W,
-                        1,
-                        "TEST");
-    draw_dmm_group_chip((uint16_t)(UI_PARAM_ROW_X + (UI_PARAM_CHIP_W + UI_PARAM_CHIP_GAP) * 2u),
-                        (uint16_t)(Y_SOFT + 4u),
-                        UI_PARAM_CHIP_W,
-                        2,
-                        "SENSE");
-    draw_dmm_group_chip((uint16_t)(UI_PARAM_ROW_X + (UI_PARAM_CHIP_W + UI_PARAM_CHIP_GAP) * 3u),
-                        (uint16_t)(Y_SOFT + 4u),
-                        UI_PARAM_CHIP_W,
-                        3,
-                        "CURRENT");
-}
+static void draw_dmm_softkeys(void);
 
 static const char *scope_measure_chip_label(void) {
     scope_sanitize_state();
@@ -4006,231 +3930,494 @@ static uint8_t dmm_voltage_warning_level(void) {
     return 0;
 }
 
-static uint16_t dmm_measure_color(void) {
-    uint8_t warning = dmm_voltage_warning_level();
-    if (dmm_live_wire_detected()) {
-        return C_WARN;
-    }
-    if (warning >= 2u) {
-        return C_WARN;
-    }
-    if (warning) {
-        return C_CH1;
-    }
-    return C_TEXT;
+// ---------------------------------------------------------------------------
+// Multimeter screen: flat dark theme, rounded cards, anti-aliased type.
+// Layout (320x240): status bar 0-22, reading card 26-162, stats 168-204,
+// group pills 210-236. Continuity and live-wire states use one tall card
+// (26-204) instead of the reading card plus stats.
+// ---------------------------------------------------------------------------
+
+static const uint16_t D_BG = RGB565(11, 14, 19);
+static const uint16_t D_CARD = RGB565(21, 26, 34);
+static const uint16_t D_TRACK = RGB565(38, 45, 58);
+static const uint16_t D_TEXT = RGB565(243, 245, 249);
+static const uint16_t D_SUB = RGB565(199, 207, 219);
+static const uint16_t D_MUTED = RGB565(138, 148, 166);
+static const uint16_t D_ACCENT = RGB565(90, 200, 250);
+static const uint16_t D_ACCENT_TINT = RGB565(31, 58, 73);
+static const uint16_t D_AMBER = RGB565(255, 181, 71);
+static const uint16_t D_RED = RGB565(255, 92, 108);
+static const uint16_t D_RED_TEXT = RGB565(255, 122, 134);
+static const uint16_t D_RED_CARD = RGB565(58, 18, 25);
+static const uint16_t D_RED_SUB = RGB565(255, 201, 207);
+static const uint16_t D_RED_LINE = RGB565(90, 30, 39);
+static const uint16_t D_GREEN = RGB565(52, 211, 153);
+static const uint16_t D_GREEN_CARD = RGB565(16, 36, 28);
+static const uint16_t D_GREEN_TINT = RGB565(27, 68, 52);
+static const uint16_t D_GREEN_SUB = RGB565(185, 233, 211);
+static const uint16_t D_GEN = RGB565(167, 139, 250);
+
+enum {
+    DMM_X = 8,
+    DMM_W = 304,
+    DMM_IN_X = 20,
+    DMM_IN_W = 280,
+    DMM_STATUS_H = 22,
+    DMM_CARD_Y = 26,
+    DMM_CARD_H = 136,
+    DMM_TALL_H = 178,
+    DMM_STATS_Y = 168,
+    DMM_STATS_H = 36,
+    DMM_KEYS_Y = 210,
+    DMM_KEYS_H = 26,
+};
+
+static const char *const dmm_mode_names[] = {
+    "Auto Detect", "DC Voltage", "AC Voltage", "Resistance",
+    "Diode / Continuity", "Capacitance", "Live Wire", "Continuity",
+    "Temperature", "AC Current (High)", "DC Current (High)",
+    "AC Current (Low)", "DC Current (Low)",
+};
+
+// The SI spellings from dmm_unit_si_text(), with the real symbols the
+// anti-aliased fonts carry.
+static const char *dmm_unit_pretty(const char *unit) {
+    if (ui_text_equal(unit, "Ohm")) return "\xCE\xA9";
+    if (ui_text_equal(unit, "kOhm")) return "k\xCE\xA9";
+    if (ui_text_equal(unit, "MOhm")) return "M\xCE\xA9";
+    if (ui_text_equal(unit, "uA")) return "\xC2\xB5" "A";
+    if (ui_text_equal(unit, "uF")) return "\xC2\xB5" "F";
+    if (ui_text_equal(unit, "~C")) return "\xC2\xB0" "C";
+    if (ui_text_equal(unit, "~F")) return "\xC2\xB0" "F";
+    return unit;
 }
 
-static const char *dmm_alert_label(void) {
-    uint8_t warning = dmm_voltage_warning_level();
-    if (dmm_live_wire_detected()) {
-        return "LIVE WIRE";
+static uint8_t dmm_text_is_number(const char *text) {
+    uint8_t digits = 0;
+    for (; *text; ++text) {
+        if (*text >= '0' && *text <= '9') {
+            ++digits;
+        } else if (*text != '.' && *text != '-' && *text != '+') {
+            return 0;
+        }
     }
-    if (warning >= 2u) {
-        return "DANGER V";
-    }
-    if (warning) {
-        return "HIGH V";
-    }
-    if (dmm_current_mode()) {
-        return dmm_high_current_mode() ? "USE HI JACK" : "USE LO JACK";
-    }
-    return 0;
+    return digits != 0;
 }
 
-static uint16_t dmm_alert_color(void) {
-    uint8_t warning = dmm_voltage_warning_level();
-    if (dmm_live_wire_detected()) {
-        return C_WARN;
+static uint8_t dmm_text_decimals(const char *text) {
+    while (*text && *text != '.') {
+        ++text;
     }
-    if (warning >= 2u) {
-        return C_WARN;
+    if (!*text) {
+        return 0;
     }
-    return C_CH1;
+    uint8_t n = 0;
+    while (*++text) {
+        ++n;
+    }
+    return n;
+}
+
+static int32_t dmm_pow10(uint8_t n) {
+    int32_t v = 1;
+    while (n--) {
+        v *= 10;
+    }
+    return v;
+}
+
+// Fixed-point (`stored` decimals) to text with `shown` decimals; `trim` drops
+// trailing zeros for axis labels.
+static void dmm_format_fixed(int32_t value, uint8_t stored, uint8_t shown, uint8_t trim, char out[12]) {
+    uint8_t pos = 0;
+    char digits[12];
+    uint8_t n = 0;
+    uint32_t v;
+
+    if (shown > stored) {
+        shown = stored;
+    }
+    if (value < 0) {
+        out[pos++] = '-';
+        v = (uint32_t)(-value);
+    } else {
+        v = (uint32_t)value;
+    }
+    v /= (uint32_t)dmm_pow10((uint8_t)(stored - shown));
+    do {
+        digits[n++] = (char)('0' + v % 10u);
+        v /= 10u;
+    } while (v || n <= shown);
+    while (n > 0 && pos < 10u) {
+        if (n == shown && shown) {
+            out[pos++] = '.';
+        }
+        out[pos++] = digits[--n];
+    }
+    out[pos] = 0;
+    if (trim && shown) {
+        while (pos > 0 && out[pos - 1u] == '0') {
+            out[--pos] = 0;
+        }
+        if (pos > 0 && out[pos - 1u] == '.') {
+            out[--pos] = 0;
+        }
+    }
+}
+
+// Smallest 1-2-5 step that is >= magnitude, in the same fixed-point units.
+static int32_t dmm_bar_full_scale(int32_t magnitude) {
+    static const uint8_t steps[3] = {1, 2, 5};
+    int32_t base = 1;
+    for (;;) {
+        for (uint8_t i = 0; i < 3u; ++i) {
+            int32_t fs = base * steps[i];
+            if (fs >= magnitude) {
+                return fs;
+            }
+        }
+        if (base > 100000000) {
+            return base * 10;
+        }
+        base *= 10;
+    }
+}
+
+static void dmm_draw_pill(int16_t right, uint16_t y, const char *label, uint16_t fill, uint16_t fg, uint16_t under, int16_t *left_out) {
+    uint16_t w = (uint16_t)(gfx_text_width(&font_small, label) + 12u);
+    int16_t x = (int16_t)(right - (int16_t)w);
+    gfx_round_rect((uint16_t)x, y, w, 15, 7, fill, under);
+    gfx_text((int16_t)(x + 6), (int16_t)(y + 1), &font_small, label, fg, fill);
+    *left_out = (int16_t)(x - 4);
+}
+
+static void dmm_draw_status_bar(void) {
+    char pct[5];
+    uint8_t pct_value = battery_percent();
+    uint8_t low = battery_low_alert();
+    uint16_t fill_color = low ? battery_alert_color(D_TEXT) : D_TEXT;
+    uint16_t fill_w = battery_display_full() ? 12u : (uint16_t)((uint32_t)pct_value * 12u / 100u);
+    int16_t x;
+
+    lcd_rect(0, 0, LCD_WIDTH, DMM_STATUS_H, D_BG);
+    gfx_round_rect(8, 8, 6, 6, 3, D_ACCENT, D_BG);
+    gfx_text(19, 5, &font_small, "Multimeter", D_TEXT, D_BG);
+
+    gfx_round_rect(294, 7, 17, 9, 2, low ? fill_color : D_MUTED, D_BG);
+    gfx_round_rect(295, 8, 15, 7, 1, D_BG, D_MUTED);
+    lcd_rect(311, 10, 2, 3, D_MUTED);
+    if (fill_w) {
+        lcd_rect(296, 9, fill_w + 1u, 5, fill_color);
+    }
+
+    format_percent(pct);
+    x = (int16_t)(290 - (int16_t)gfx_text_width(&font_small, pct));
+    gfx_text(x, 5, &font_small, pct, battery_alert_color(D_MUTED), D_BG);
+    x = (int16_t)(x - 4);
+    if (battery_charge_indicator_visible()) {
+        gfx_line((int16_t)(x - 2), 6, (int16_t)(x - 6), 11, 2, D_GREEN, D_BG);
+        gfx_line((int16_t)(x - 6), 11, (int16_t)(x - 2), 11, 2, D_GREEN, D_BG);
+        gfx_line((int16_t)(x - 2), 11, (int16_t)(x - 6), 16, 2, D_GREEN, D_BG);
+        x = (int16_t)(x - 12);
+    }
+    if (gen_running || gen_output_applied) {
+        int16_t left;
+        dmm_draw_pill(x, 4, "GEN", D_GEN, D_BG, D_BG, &left);
+    }
 }
 
 static uint8_t dmm_auto_range_display(void) {
     return ui.auto_range || ui.dmm_mode == DMM_MODE_AUTO;
 }
 
-static const char *dmm_mode_status_label(void) {
+static uint16_t dmm_value_color(uint8_t warning) {
+    if (warning >= 2u) {
+        return D_RED_TEXT;
+    }
+    if (warning) {
+        return D_AMBER;
+    }
+    return D_TEXT;
+}
+
+static void dmm_draw_card_header(uint16_t card_color, uint16_t title_color, uint8_t warning) {
+    int16_t right = (int16_t)(DMM_X + DMM_W - 12);
+    int16_t title_end;
+
+    title_end = gfx_text(DMM_IN_X, DMM_CARD_Y + 7, &font_medium, dmm_mode_names[ui.dmm_mode], title_color, card_color);
+
     if (dmm_hold_active) {
-        return "HOLD";
+        dmm_draw_pill(right, DMM_CARD_Y + 8, "HOLD", D_AMBER, D_BG, card_color, &right);
     }
     if (dmm_rel_active) {
-        return "REL";
+        dmm_draw_pill(right, DMM_CARD_Y + 8, "REL \xCE\x94", D_ACCENT, D_BG, card_color, &right);
     }
-    return dmm_auto_range_display() ? "AUTO MODE" : "MANUAL MODE";
-}
-
-static const char *dmm_mode_status_detail(void) {
-    const char *value;
-    const char *unit;
-
-    if (!dmm_rel_active) {
-        return 0;
+    if (dmm_auto_range_display()) {
+        dmm_draw_pill(right, DMM_CARD_Y + 8, "AUTO", D_ACCENT_TINT, D_ACCENT, card_color, &right);
+    } else {
+        dmm_draw_pill(right, DMM_CARD_Y + 8, "MANUAL", D_TRACK, D_SUB, card_color, &right);
     }
 
-    value = dmm_rel_ref_value;
-    unit = dmm_rel_unit;
-    ui_text_copy(dmm_status_detail, value, sizeof(dmm_status_detail));
-    if (unit[0] && !ui_text_equal(value, "-----") && !ui_text_equal(value, "RANGE")) {
-        ui_text_append(dmm_status_detail, " ", sizeof(dmm_status_detail));
-        ui_text_append(dmm_status_detail, unit, sizeof(dmm_status_detail));
-    }
-    return dmm_status_detail;
-}
-
-static void lcd_text_right_fit(uint16_t left,
-                               uint16_t right,
-                               uint16_t y,
-                               const char *text,
-                               uint16_t fg,
-                               uint16_t bg,
-                               uint8_t preferred_scale,
-                               uint8_t min_scale) {
-    uint16_t width;
-    uint16_t span = right > left ? (uint16_t)(right - left) : 0u;
-    uint8_t scale = preferred_scale;
-
-    while (scale > min_scale && lcd_text_width(text, scale) > span) {
-        --scale;
-    }
-
-    width = lcd_text_width(text, scale);
-    lcd_text(width >= span ? left : (uint16_t)(right - width), y, text, fg, bg, scale);
-}
-
-static void draw_dmm_mode_status(uint16_t x, uint16_t y, uint16_t right, uint16_t bg) {
-    const char *label = dmm_mode_status_label();
-    const char *detail = dmm_mode_status_detail();
-    uint16_t label_w = lcd_text_width(label, 2);
-    uint16_t label_color = dmm_hold_active ? C_WARN : C_TEXT;
-
-    lcd_text(x, y, label, label_color, bg, 2);
-    if (detail && right > (uint16_t)(x + label_w + 10u)) {
-        uint16_t detail_x = (uint16_t)(x + label_w + 10u);
-        uint16_t detail_right = right;
-        uint16_t detail_span = detail_right > detail_x ? (uint16_t)(detail_right - detail_x) : 0u;
-        uint8_t scale = lcd_text_width(detail, 2) <= detail_span ? 2u : 1u;
-        lcd_text_right_fit(detail_x,
-                           detail_right,
-                           (uint16_t)(y + (scale == 2u ? 0u : 4u)),
-                           detail,
-                           C_TEXT,
-                           bg,
-                           scale,
-                           scale);
+    if (warning) {
+        const char *label = warning >= 2u ? "HIGH VOLTAGE" : "CAUTION";
+        uint16_t color = warning >= 2u ? D_RED_TEXT : D_AMBER;
+        int16_t x = (int16_t)(title_end + 8);
+        if (x + 14 + (int16_t)gfx_text_width(&font_small, label) <= right) {
+            gfx_line((int16_t)(x + 5), DMM_CARD_Y + 11, (int16_t)(x + 1), DMM_CARD_Y + 18, 1, color, card_color);
+            gfx_line((int16_t)(x + 1), DMM_CARD_Y + 18, (int16_t)(x + 9), DMM_CARD_Y + 18, 1, color, card_color);
+            gfx_line((int16_t)(x + 9), DMM_CARD_Y + 18, (int16_t)(x + 5), DMM_CARD_Y + 11, 1, color, card_color);
+            gfx_text((int16_t)(x + 14), DMM_CARD_Y + 9, &font_small, label, color, card_color);
+        }
+    } else if (dmm_current_mode()) {
+        const char *label = dmm_high_current_mode() ? "USE HI JACK" : "USE LO JACK";
+        int16_t x = (int16_t)(title_end + 8);
+        if (x + (int16_t)gfx_text_width(&font_small, label) <= right) {
+            gfx_text(x, DMM_CARD_Y + 9, &font_small, label, D_AMBER, card_color);
+        }
     }
 }
 
-static void draw_dmm_alert_chip(uint16_t x, uint16_t y, uint16_t w, const char *label, uint16_t color) {
-    if (!label) {
+static void dmm_draw_bar(const char *value, const char *unit, uint16_t card_color, uint16_t fill_color) {
+    enum { BAR_Y = DMM_CARD_Y + 113, LABEL_Y = DMM_CARD_Y + 120 };
+    uint8_t decimals = dmm_stat_decimals();
+    int32_t v = 0;
+    char label[20];
+    char num[12];
+
+    gfx_round_rect(DMM_IN_X, BAR_Y, DMM_IN_W, 6, 3, D_TRACK, card_color);
+    if (!dmm_text_is_number(value) || !parse_fixed_decimal(value[0] == '+' ? value + 1 : value, decimals, &v)) {
         return;
     }
 
-    lcd_rect(x, y, w, 20, color);
-    lcd_frame(x, y, w, 20, C_TEXT);
-    lcd_text_center(x, (uint16_t)(y + 6u), w, label, color == C_CH1 ? C_BG : C_TEXT, color, 1);
-}
-
-static void lcd_thick_line(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color) {
-    lcd_line(x0, y0, x1, y1, color);
-    lcd_line((int16_t)(x0 + 1), y0, (int16_t)(x1 + 1), y1, color);
-    lcd_line((int16_t)(x0 - 1), y0, (int16_t)(x1 - 1), y1, color);
-    lcd_line(x0, (int16_t)(y0 + 1), x1, (int16_t)(y1 + 1), color);
-    lcd_line(x0, (int16_t)(y0 - 1), x1, (int16_t)(y1 - 1), color);
-}
-
-static void draw_high_voltage_symbol(uint16_t cx, uint16_t top, uint16_t size, uint16_t bg) {
-    int16_t half = (int16_t)(size / 2u);
-    int16_t x0 = (int16_t)((int16_t)cx - half);
-    int16_t x1 = (int16_t)((int16_t)cx + half);
-    int16_t y0 = (int16_t)top;
-    int16_t y1 = (int16_t)(top + size);
-    int16_t bolt_top = (int16_t)(top + size / 5u);
-    int16_t bolt_mid = (int16_t)(top + size / 2u);
-    int16_t bolt_bot = (int16_t)(top + size - size / 7u);
-
-    (void)bg;
-    lcd_thick_line((int16_t)cx, y0, x0, y1, C_WARN);
-    lcd_thick_line(x0, y1, x1, y1, C_WARN);
-    lcd_thick_line(x1, y1, (int16_t)cx, y0, C_WARN);
-    lcd_rect((uint16_t)(cx - size / 20u), (uint16_t)(top + size / 4u), (uint16_t)(size / 10u + 1u), (uint16_t)(size / 3u), C_WARN);
-    lcd_rect((uint16_t)(cx - size / 20u), (uint16_t)(top + size - size / 5u), (uint16_t)(size / 10u + 1u), (uint16_t)(size / 10u + 1u), C_WARN);
-    lcd_thick_line((int16_t)(cx + size / 9u - 2), bolt_top, (int16_t)(cx - size / 8u - 2), bolt_mid, C_TEXT);
-    lcd_thick_line((int16_t)(cx - size / 8u - 2), bolt_mid, (int16_t)(cx + size / 10u - 2), (int16_t)(bolt_mid - size / 10u), C_TEXT);
-    lcd_thick_line((int16_t)(cx + size / 10u - 2), (int16_t)(bolt_mid - size / 10u), (int16_t)(cx - size / 8u - 2), bolt_bot, C_TEXT);
-}
-
-static void draw_dmm_panel(void) {
-    enum {
-        VALUE_LEFT = 22,
-        VALUE_RIGHT = 300,
-        VALUE_Y = 100,
-        UNIT_Y = 150,
-    };
-    uint8_t alert = dmm_voltage_warning_level();
-    uint8_t live_detected = dmm_live_wire_detected();
-    uint16_t value_right = live_detected ? 218u : VALUE_RIGHT;
-    uint16_t value_color = dmm_measure_color();
-    uint16_t unit_color = alert ? value_color : C_DMM;
-
-    lcd_rect(10, 55, 300, 105, C_PANEL);
-    lcd_rect(10, 55, 5, 105, C_DMM);
-    lcd_text(22, 58, dmm_mode_names[ui.dmm_mode], C_DMM, C_PANEL, 3);
-    if (dmm_hold_active || dmm_rel_active) {
-        draw_dmm_mode_status(22, 80, 300u, C_PANEL);
+    if (dmm_rel_active && !dmm_hold_active) {
+        int32_t ref = 0;
+        int32_t mag = v < 0 ? -v : v;
+        int32_t fs;
+        uint16_t half = DMM_IN_W / 2u;
+        uint16_t len;
+        if (parse_fixed_decimal(dmm_rel_ref_value, decimals, &ref) && ref) {
+            mag = ref < 0 ? -ref : ref;
+        }
+        fs = dmm_bar_full_scale(mag ? mag : 1);
+        mag = v < 0 ? -v : v;
+        len = (uint16_t)(mag >= fs ? half : (uint32_t)mag * half / (uint32_t)fs);
+        if (len) {
+            gfx_round_rect(v < 0 ? (uint16_t)(DMM_IN_X + half - len) : (uint16_t)(DMM_IN_X + half), BAR_Y, len, 6, len < 6u ? 0u : 3u, fill_color, D_TRACK);
+        }
+        lcd_rect(DMM_IN_X + half - 1u, BAR_Y - 3u, 2, 12, D_TEXT);
+        gfx_text(DMM_IN_X, LABEL_Y, &font_small, "-", D_MUTED, card_color);
+        gfx_text_right(DMM_IN_X + DMM_IN_W, LABEL_Y, &font_small, "+", D_MUTED, card_color);
+        label[0] = 0;
+        ui_text_append(label, "Reference ", sizeof(label));
+        ui_text_append(label, dmm_rel_ref_value, sizeof(label));
+        ui_text_append(label, " ", sizeof(label));
+        ui_text_append(label, unit, sizeof(label));
+        gfx_text_center(DMM_IN_X, LABEL_Y, DMM_IN_W, &font_small, label, D_MUTED, card_color);
+        return;
     }
-    if (!dmm_hold_active && !dmm_rel_active) {
-        draw_dmm_alert_chip(176, 84, 124, dmm_alert_label(), dmm_alert_color());
+
+    {
+        int32_t mag = v < 0 ? -v : v;
+        int32_t fs = dmm_bar_full_scale(mag ? mag : 1);
+        uint16_t len = (uint16_t)(mag >= fs ? DMM_IN_W : (uint32_t)mag * DMM_IN_W / (uint32_t)fs);
+        if (len) {
+            gfx_round_rect(DMM_IN_X, BAR_Y, len, 6, 3, fill_color, D_TRACK);
+        }
+        for (uint8_t i = 1; i < 4u; ++i) {
+            lcd_rect((uint16_t)(DMM_IN_X + DMM_IN_W * i / 4u), BAR_Y + 8u, 1, 3, D_TRACK);
+        }
+        gfx_text(DMM_IN_X, LABEL_Y, &font_small, "0", D_MUTED, card_color);
+        dmm_format_fixed(fs, decimals, decimals, 1, num);
+        label[0] = 0;
+        if (v < 0) {
+            ui_text_append(label, "-", sizeof(label));
+        }
+        ui_text_append(label, num, sizeof(label));
+        ui_text_append(label, " ", sizeof(label));
+        ui_text_append(label, unit, sizeof(label));
+        gfx_text_right(DMM_IN_X + DMM_IN_W, LABEL_Y, &font_small, label, D_MUTED, card_color);
     }
-    lcd_text_right_fit(VALUE_LEFT, value_right, VALUE_Y, dmm_display_value(), value_color, C_PANEL, 6, 4);
-    lcd_text_right_fit(VALUE_LEFT, VALUE_RIGHT, UNIT_Y, dmm_display_unit(), unit_color, C_PANEL, 3, 2);
-    if (live_detected) {
-        draw_high_voltage_symbol(264, 100, 42, C_PANEL);
+}
+
+static void dmm_draw_reading_card(void) {
+    enum { VALUE_Y = DMM_CARD_Y + 27 };
+    uint8_t warning = dmm_voltage_warning_level();
+    uint16_t card = D_CARD;
+    const char *value = dmm_display_value();
+    const char *unit = dmm_unit_pretty(dmm_display_unit());
+    char signed_value[12];
+    uint16_t value_color = dmm_value_color(warning);
+    uint16_t unit_color = warning ? value_color : D_ACCENT;
+    uint16_t bar_color = warning >= 2u ? D_RED : (warning ? D_AMBER : D_ACCENT);
+    int16_t x;
+
+    if (warning) {
+        gfx_round_rect(DMM_X, DMM_CARD_Y, DMM_W, DMM_CARD_H, 14, warning >= 2u ? D_RED : D_AMBER, D_BG);
+        gfx_round_rect(DMM_X + 2u, DMM_CARD_Y + 2u, DMM_W - 4u, DMM_CARD_H - 4u, 12, card, warning >= 2u ? D_RED : D_AMBER);
+    } else {
+        gfx_round_rect(DMM_X, DMM_CARD_Y, DMM_W, DMM_CARD_H, 14, card, D_BG);
+    }
+    dmm_draw_card_header(card, D_SUB, warning);
+
+    // A relative reading is a difference: show its sign either way.
+    if (dmm_rel_active && !dmm_hold_active && dmm_text_is_number(value) && value[0] != '-') {
+        signed_value[0] = '+';
+        signed_value[1] = 0;
+        ui_text_append(signed_value, value, sizeof(signed_value));
+        value = signed_value;
+    }
+    // ...and with the meter's own precision, not the four decimals of the
+    // fixed-point difference.
+    if (dmm_rel_active && !dmm_hold_active && dmm_text_is_number(value)) {
+        uint8_t keep = dmm_text_decimals(dmm_rel_ref_value);
+        uint8_t has = dmm_text_decimals(value);
+        if (value != signed_value) {
+            ui_text_copy(signed_value, value, sizeof(signed_value));
+            value = signed_value;
+        }
+        if (has > keep) {
+            uint8_t len = 0;
+            while (signed_value[len]) {
+                ++len;
+            }
+            len = (uint8_t)(len - (has - keep) - (keep ? 0u : 1u));
+            signed_value[len] = 0;
+        }
+    }
+
+    if (!value[0]) {
+        gfx_text(DMM_IN_X, VALUE_Y, &font_huge, "----", D_TRACK, card);
+    } else if (dmm_text_is_number(value) &&
+               gfx_text_width(&font_huge, value) + 6u + gfx_text_width(&font_large, unit) <= DMM_IN_W) {
+        x = gfx_text(DMM_IN_X, VALUE_Y, &font_huge, value, value_color, card);
+        // Units sit on the reading's baseline.
+        gfx_text((int16_t)(x + 6), (int16_t)(VALUE_Y + font_huge.ascent - font_large.ascent), &font_large, unit, unit_color, card);
+    } else {
+        uint16_t color = dmm_text_is_number(value) ? value_color : D_SUB;
+        x = gfx_text(DMM_IN_X, VALUE_Y + 26, &font_large, value, color, card);
+        if (unit[0]) {
+            gfx_text((int16_t)(x + 6), VALUE_Y + 26, &font_large, unit, unit_color, card);
+        }
+    }
+
+    dmm_draw_bar(value, unit, card, bar_color);
+}
+
+static void dmm_draw_stats(void) {
+    static const char *const labels[3] = {"MIN", "AVG", "MAX"};
+    const char *value = dmm_display_value();
+    uint8_t valid = dmm_stats.valid && dmm_stats.mode == ui.dmm_mode &&
+                    ui_text_equal(dmm_stats.unit, dmm_display_unit()) && dmm_text_is_number(value);
+    uint8_t shown = dmm_text_decimals(value);
+
+    for (uint8_t i = 0; i < 3u; ++i) {
+        uint16_t x = (uint16_t)(DMM_X + i * 103u);
+        char text[12];
+        gfx_round_rect(x, DMM_STATS_Y, 98, DMM_STATS_H, 10, D_CARD, D_BG);
+        gfx_text((int16_t)(x + 9u), DMM_STATS_Y + 4, &font_small, labels[i], D_MUTED, D_CARD);
+        if (valid) {
+            int32_t v = i == 0u ? dmm_stats.min_value : (i == 1u ? dmm_stats.avg_value : dmm_stats.max_value);
+            dmm_format_fixed(v, dmm_stats.decimals, shown, 0, text);
+            gfx_text((int16_t)(x + 9u), DMM_STATS_Y + 16, &font_medium, text, D_TEXT, D_CARD);
+        } else {
+            gfx_text((int16_t)(x + 9u), DMM_STATS_Y + 16, &font_medium, "\xE2\x80\x94", D_MUTED, D_CARD);
+        }
+    }
+}
+
+// One tall status card: continuity, live wire. `icon` 0 = check, 1 = bolt.
+static void dmm_draw_state_card(uint16_t card, uint16_t sub, uint16_t accent, uint16_t line,
+                                uint16_t icon_bg, uint16_t icon_fg, uint8_t icon,
+                                const char *pill, uint16_t pill_bg, uint16_t pill_fg,
+                                const char *headline, uint16_t headline_color,
+                                const char *detail, const char *detail_unit,
+                                const char *footer_left, const char *footer_right) {
+    enum { CX = DMM_X + 44, CY = DMM_CARD_Y + 82 };
+    int16_t right = (int16_t)(DMM_X + DMM_W - 12);
+
+    gfx_round_rect(DMM_X, DMM_CARD_Y, DMM_W, DMM_TALL_H, 14, card, D_BG);
+    gfx_text(DMM_IN_X, DMM_CARD_Y + 7, &font_medium, dmm_mode_names[ui.dmm_mode], sub, card);
+    if (pill) {
+        dmm_draw_pill(right, DMM_CARD_Y + 8, pill, pill_bg, pill_fg, card, &right);
+    }
+
+    gfx_round_rect(CX - 28, CY - 28, 56, 56, 28, icon_bg, card);
+    if (icon == 0u) {
+        gfx_line(CX - 13, CY + 1, CX - 4, CY + 10, 4, icon_fg, icon_bg);
+        gfx_line(CX - 4, CY + 10, CX + 13, CY - 9, 4, icon_fg, icon_bg);
+    } else {
+        gfx_line(CX + 5, CY - 15, CX - 8, CY + 3, 4, icon_fg, icon_bg);
+        gfx_line(CX - 8, CY + 3, CX + 8, CY - 3, 4, icon_fg, icon_bg);
+        gfx_line(CX + 8, CY - 3, CX - 5, CY + 15, 4, icon_fg, icon_bg);
+    }
+
+    gfx_text(DMM_X + 88, CY - 28, &font_large, headline, headline_color, card);
+    if (detail && detail[0]) {
+        int16_t x = gfx_text(DMM_X + 89, CY + 6, &font_medium, detail, sub, card);
+        if (detail_unit && detail_unit[0]) {
+            gfx_text((int16_t)(x + 4), CY + 6, &font_medium, detail_unit, accent, card);
+        }
+    }
+
+    lcd_rect(DMM_IN_X, DMM_CARD_Y + DMM_TALL_H - 25u, DMM_IN_W, 1, line);
+    gfx_text(DMM_IN_X, DMM_CARD_Y + DMM_TALL_H - 19, &font_small, footer_left, sub, card);
+    if (footer_right) {
+        gfx_text_right(DMM_IN_X + DMM_IN_W, DMM_CARD_Y + DMM_TALL_H - 19, &font_small, footer_right, sub, card);
     }
 }
 
 static void draw_dmm_immersive_panel(void) {
-    enum {
-        VALUE_LEFT = 16,
-        VALUE_RIGHT = 310,
-        VALUE_Y = 88,
-        UNIT_Y = 148,
-    };
-    uint8_t alert = dmm_voltage_warning_level();
-    uint8_t live_detected = dmm_live_wire_detected();
-    uint16_t value_right = live_detected ? 222u : VALUE_RIGHT;
-    uint16_t value_color = dmm_measure_color();
-    uint16_t unit_color = alert ? value_color : C_DMM;
+    lcd_rect(0, DMM_STATUS_H, LCD_WIDTH, DMM_KEYS_Y - DMM_STATUS_H - 2u, D_BG);
 
-    lcd_rect(0, 24, LCD_WIDTH, 174, C_BG);
-    lcd_text(18, 27, dmm_mode_names[ui.dmm_mode], C_DMM, C_BG, 3);
-    if (dmm_hold_active || dmm_rel_active) {
-        draw_dmm_mode_status(18, 68, 304u, C_BG);
+    if (ui.dmm_mode == DMM_MODE_LIVE) {
+        if (dmm_live_wire_detected()) {
+            dmm_draw_state_card(D_RED_CARD, D_RED_SUB, D_RED, D_RED_LINE, D_RED, D_BG, 1,
+                                "DETECTED", D_RED, D_BG, "Live wire", D_TEXT,
+                                "AC mains sensed near probe", 0,
+                                "Non-contact check: confirm with a reading", 0);
+        } else {
+            dmm_draw_state_card(D_CARD, D_SUB, D_ACCENT, D_TRACK, D_TRACK, D_MUTED, 1,
+                                "SCANNING", D_ACCENT_TINT, D_ACCENT, "No live wire", D_SUB,
+                                "Hold the probe near a conductor", 0,
+                                "Beeps when mains voltage is sensed", 0);
+        }
+        return;
     }
-    if (!dmm_hold_active && !dmm_rel_active) {
-        draw_dmm_alert_chip(176, 55, 128, dmm_alert_label(), dmm_alert_color());
+
+    if (ui.dmm_mode == DMM_MODE_DIODE && !dmm_hold_active && !dmm_rel_active && dmm_diode_continuity_active()) {
+        dmm_draw_state_card(D_GREEN_CARD, D_GREEN_SUB, D_GREEN, D_GREEN_TINT, D_GREEN, D_BG, 0,
+                            "BEEP", D_GREEN_TINT, D_GREEN, "Connected", D_TEXT,
+                            dmm_display_value(), dmm_unit_pretty(dmm_display_unit()),
+                            "Beeps below 50 \xCE\xA9", "Open circuit shows OPEN");
+        return;
     }
-    lcd_text_right_fit(VALUE_LEFT, value_right, VALUE_Y, dmm_display_value(), value_color, C_BG, 7, 5);
-    lcd_text_right_fit(VALUE_LEFT, VALUE_RIGHT, UNIT_Y, dmm_display_unit(), unit_color, C_BG, 4, 3);
-    if (live_detected) {
-        draw_high_voltage_symbol(266, 92, 58, C_BG);
+
+    dmm_draw_reading_card();
+    dmm_draw_stats();
+}
+
+static void draw_dmm_softkeys(void) {
+    static const char *const labels[4] = {"V / \xCE\xA9", "Test", "Sense", "Current"};
+
+    lcd_rect(0, DMM_KEYS_Y - 2u, LCD_WIDTH, LCD_HEIGHT - DMM_KEYS_Y + 2u, D_BG);
+    for (uint8_t i = 0; i < 4u; ++i) {
+        uint16_t x = (uint16_t)(9u + i * 77u);
+        uint8_t active = dmm_group_selected(i);
+        uint16_t fill = active ? D_ACCENT : D_CARD;
+        gfx_round_rect(x, DMM_KEYS_Y, 71, DMM_KEYS_H, 13, fill, D_BG);
+        gfx_text_center((int16_t)x, DMM_KEYS_Y + 4, 71, &font_medium, labels[i], active ? D_BG : D_SUB, fill);
     }
 }
 
 static void draw_dmm(void) {
-    lcd_rect(0, Y_BODY, LCD_WIDTH, H_BODY, C_BG);
-    draw_mode_tabs();
-    draw_dmm_panel();
+    lcd_rect(0, 0, LCD_WIDTH, LCD_HEIGHT, D_BG);
+    dmm_draw_status_bar();
+    draw_dmm_immersive_panel();
+    draw_dmm_softkeys();
 }
 
 static void draw_dmm_immersive(void) {
-    lcd_rect(0, 0, LCD_WIDTH, LCD_HEIGHT, C_BG);
-    draw_micro_status(8, 6, C_BG);
-    draw_battery_status_overlay(C_BG);
-    draw_dmm_immersive_panel();
-    draw_dmm_softkeys();
+    draw_dmm();
 }
 
 static int16_t scope_sine(uint16_t phase) {
@@ -7416,7 +7603,7 @@ static void ui_draw_full_scene(void) {
     if (full_scene_clear) {
         lcd_rect(0, 0, LCD_WIDTH, LCD_HEIGHT, C_BG);
     }
-    if (!ui.chrome_visible) {
+    if (!ui.chrome_visible || ui.mode == UI_MODE_DMM) {
         if (ui.mode == UI_MODE_SCOPE) {
             draw_scope_immersive();
         } else if (ui.mode == UI_MODE_GEN) {
@@ -7439,7 +7626,7 @@ static void ui_draw_full_scene(void) {
 }
 
 static void ui_draw_mode_content_scene(void) {
-    if (!ui.chrome_visible) {
+    if (!ui.chrome_visible || ui.mode == UI_MODE_DMM) {
         if (ui.mode == UI_MODE_SCOPE) {
             draw_scope_immersive();
         } else if (ui.mode == UI_MODE_GEN) {
@@ -7466,13 +7653,8 @@ static void ui_draw_local_change_scene(void) {
         return;
     }
 
-    if (ui.chrome_visible) {
-        draw_dmm_panel();
-        draw_softkeys();
-    } else {
-        draw_dmm_immersive_panel();
-        draw_dmm_softkeys();
-    }
+    draw_dmm_immersive_panel();
+    draw_dmm_softkeys();
 }
 
 static void ui_draw_dmm_reading_scene(void) {
@@ -7481,15 +7663,13 @@ static void ui_draw_dmm_reading_scene(void) {
         return;
     }
 
-    if (ui.chrome_visible) {
-        draw_dmm_panel();
-    } else {
-        draw_dmm_immersive_panel();
-    }
+    draw_dmm_immersive_panel();
 }
 
 static void ui_draw_battery_status_scene(void) {
-    if (ui.chrome_visible) {
+    if (ui.mode == UI_MODE_DMM && ui.overlay == UI_OVERLAY_NONE) {
+        dmm_draw_status_bar();
+    } else if (ui.chrome_visible) {
         draw_battery_status_header();
     } else if (ui.mode == UI_MODE_SCOPE) {
         draw_battery_status_overlay(RGB565(4, 8, 11));

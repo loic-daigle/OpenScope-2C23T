@@ -60,7 +60,7 @@ LDFLAGS := \
 	-Wl,--gc-sections \
 	-Wl,-Map,$(BUILD)/$(PROJECT).map
 
-SRCS := src/startup.c src/board.c src/display.c src/font.c src/dmm.c src/settings.c src/fpga.c src/scope.c src/siggen.c src/fw_update.c src/screenshot.c src/w25q.c src/usb_msc.c src/bootloader.c src/ui.c src/main.c src/fft.c src/arb_csv.c
+SRCS := src/startup.c src/board.c src/display.c src/font.c src/dmm.c src/settings.c src/fpga.c src/scope.c src/siggen.c src/fw_update.c src/screenshot.c src/w25q.c src/usb_msc.c src/bootloader.c src/ui.c src/main.c src/fft.c src/arb_csv.c src/gfx.c src/ui_fonts.c
 ifeq ($(HW_TARGET_HW40),1)
 SRCS += src/fpga_bitstream_hw4.c
 else
@@ -83,7 +83,7 @@ HOST_TEST_BINS := $(BUILD_ROOT)/tests/bootloader-old $(BUILD_ROOT)/tests/bootloa
                   $(BUILD_ROOT)/tests/generator-old $(BUILD_ROOT)/tests/generator-hw4 \
                   $(BUILD_ROOT)/tests/fpga_timing-old $(BUILD_ROOT)/tests/fpga_timing-hw4
 
-.PHONY: all clean clean-dist release release-lt-hw4 release-hw4 test
+.PHONY: all clean clean-dist release release-lt-hw4 release-hw4 test dmm-preview
 
 all: $(BUILD)/$(PROJECT).bin
 
@@ -140,6 +140,12 @@ $(BUILD_ROOT)/tests/fft: tests/fft.c src/fft.c src/fft.h
 $(BUILD_ROOT)/tests/settings: tests/settings.c src/settings.c src/settings.h src/hw.h
 	@mkdir -p $(dir $@)
 	$(CLANG) $(HOST_TEST_FLAGS) $< $(HOST_TEST_LINK) -o $@
+
+# Render the multimeter screen states on the host: build/dmm-preview/*.ppm
+dmm-preview: tools/dmm_preview.c src/ui.c src/dmm.c src/gfx.c src/ui_fonts.c
+	@mkdir -p $(BUILD_ROOT)/dmm-preview
+	$(CLANG) -std=c11 -O1 -Wall -Wextra -ffunction-sections -fdata-sections -DHW_TARGET_HW40=1 -DEXPECTED_FW_VERSION='"$(VERSION)"' $< $(HOST_TEST_LINK) -o $(BUILD_ROOT)/dmm-preview/run
+	$(BUILD_ROOT)/dmm-preview/run
 
 $(LLD_DIR)/ld.lld:
 	@test -n "$(RUST_LLD)" || (echo "rust-lld not found; install an ARM linker or Rust toolchain with rust-lld" >&2; exit 1)
