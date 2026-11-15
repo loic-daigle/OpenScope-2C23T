@@ -36,7 +36,7 @@ EXTRA = "Ωµ°Δ"  # Ohm, micro, degree, Delta
 FONTS = [
     ("font_huge", "Inter-SemiBold.ttf", 56, "0123456789.-+ "),
     ("font_large", "Inter-SemiBold.ttf", 26,
-     " 0123456789.-+%" "ABCDEFGHIJKLMNOPQRSTUVWXYZ" "acdeiklmnoprstuvwyz" + EXTRA),
+     " 0123456789.-+%" "ABCDEFGHIJKLMNOPQRSTUVWXYZ" "abcdefghijklmnopqrstuvwxyz" + EXTRA),
     ("font_medium", "Inter-SemiBold.ttf", 13, ASCII + EXTRA + "—"),
     ("font_small", "Inter-SemiBold.ttf", 10, ASCII + EXTRA + "—"),
 ]

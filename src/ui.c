@@ -526,7 +526,6 @@ enum {
 
 static const uint16_t C_BG = RGB565(2, 4, 8);
 static const uint16_t C_TOP = RGB565(8, 14, 22);
-static const uint16_t C_PANEL = RGB565(14, 22, 32);
 static const uint16_t C_PANEL_2 = RGB565(20, 30, 44);
 static const uint16_t C_GRID = RGB565(26, 36, 48);
 static const uint16_t C_TEXT = RGB565(250, 252, 255);
@@ -713,16 +712,6 @@ static const uint8_t scope_trigger_param_order[] = {
     SCOPE_PARAM_TRIG_TYPE,
     SCOPE_PARAM_TRIG_LEVEL,
 };
-static const char *const gen_wave_labels[] = {
-    "SINE", "RECT", "SAW", "HALF", "FULL",
-    "P STEP", "R STEP", "EXP UP", "EXP DN", "DC",
-    "MULTI AUD", "SINK PLS", "LORENTZ", "TRIANGLE", "NOISE", "ARBITRARY",
-};
-static const char *const gen_wave_short_labels[] = {
-    "SINE", "RECT", "SAW", "HALF", "FULL",
-    "PSTEP", "RSTEP", "EXP+", "EXP-", "DC",
-    "MULTI", "SINK", "LOR", "TRI", "NOISE", "ARBT",
-};
 static const uint8_t gen_wave_order[] = {
     SIGGEN_WAVE_SINE,
     SIGGEN_WAVE_SQUARE,
@@ -835,26 +824,6 @@ static uint16_t mode_accent(void) {
         return C_GEN;
     }
     return C_DMM;
-}
-
-static const char *mode_title(void) {
-    if (ui.mode == UI_MODE_SCOPE) {
-        return "OSCILLOSCOPE";
-    }
-    if (ui.mode == UI_MODE_GEN) {
-        return "SIGNAL GENERATOR";
-    }
-    return "MULTIMETER";
-}
-
-static const char *mode_short(ui_mode_t mode) {
-    if (mode == UI_MODE_SCOPE) {
-        return "OSC";
-    }
-    if (mode == UI_MODE_GEN) {
-        return "SIG";
-    }
-    return "DMM";
 }
 
 static void format_percent(char out[5]) {
@@ -1012,28 +981,6 @@ static void format_gen_freq_digits(char out[5]) {
     out[2] = (char)('0' + (value / 10u) % 10u);
     out[3] = (char)('0' + value % 10u);
     out[4] = 0;
-}
-
-static void gen_freq_draw_unit(uint16_t x, uint16_t y, uint8_t unit, uint16_t fg, uint16_t bg, uint8_t selected) {
-    uint16_t text = selected ? C_TEXT : fg;
-
-    if (unit > 2u) {
-        unit = 0;
-    }
-    if (unit == 0u) {
-        lcd_text(x, (uint16_t)(y + 4u), "Hz", text, bg, 1);
-        if (selected) {
-            lcd_rect(x, (uint16_t)(y + 14u), 12, 2, C_TEXT);
-        }
-    } else {
-        // k for kilo, M for mega: the case is the unit.
-        char prefix[2] = {unit == 1u ? 'k' : 'M', 0};
-        lcd_text((uint16_t)(x + 3u), y, prefix, text, bg, 1);
-        lcd_text(x, (uint16_t)(y + 10u), "Hz", text, bg, 1);
-        if (selected) {
-            lcd_rect(x, (uint16_t)(y + 20u), 12, 2, C_TEXT);
-        }
-    }
 }
 
 static uint8_t battery_display_full(void) {
@@ -1195,22 +1142,6 @@ static void draw_battery_status_overlay(uint16_t bg) {
     draw_battery(280, 7, bg);
 }
 
-static void draw_header(void) {
-    uint16_t accent = mode_accent();
-    lcd_rect(0, Y_HEADER, LCD_WIDTH, H_HEADER, C_TOP);
-    lcd_rect(0, (uint16_t)(H_HEADER - 2), LCD_WIDTH, 2, accent);
-    lcd_text(8, 6, mode_title(), C_TEXT, C_TOP, 2);
-
-    draw_battery_status_header();
-}
-
-static void draw_micro_status(uint16_t x, uint16_t y, uint16_t bg) {
-    uint16_t accent = mode_accent();
-    lcd_rect(x, y, 118, 13, bg);
-    lcd_rect(x, y, 3, 13, accent);
-    lcd_text((uint16_t)(x + 7), (uint16_t)(y + 4), mode_title(), C_TEXT, bg, 1);
-}
-
 static const char *fw_update_status_text(const fw_update_status_t *status) {
     if (status->state == FW_UPDATE_STATE_STAGING) {
         return "RECEIVING";
@@ -1236,17 +1167,6 @@ static const char *fw_update_status_text(const fw_update_status_t *status) {
 // Redrawn as rounded dialogs further down, next to the other modern UI.
 static void draw_fw_update_overlay(uint16_t bg);
 static void draw_screenshot_overlay(uint16_t bg);
-
-static void draw_mode_tabs(void) {
-    uint16_t x = 10;
-    for (uint8_t i = 0; i < (uint8_t)UI_MODE_COUNT; ++i) {
-        uint16_t bg = i == (uint8_t)ui.mode ? mode_accent() : C_PANEL_2;
-        uint16_t fg = i == (uint8_t)ui.mode ? C_BG : C_MUTED;
-        lcd_rect(x, 32, 46, 16, bg);
-        lcd_text_center(x, 36, 46, mode_short((ui_mode_t)i), fg, bg, 1);
-        x = (uint16_t)(x + 50);
-    }
-}
 
 static uint8_t dmm_group_first(uint8_t mode) {
     if (mode >= DMM_MODE_AC_HI_CURR) {
@@ -2512,12 +2432,14 @@ static uint8_t dmm_group_selected(uint8_t group) {
 
 static void draw_dmm_softkeys(void);
 
+static const char *scope_measure_pretty_label(uint8_t measure);
+
 static const char *scope_measure_chip_label(void) {
     scope_sanitize_state();
     if (!scope_measure_visible) {
         return "OFF";
     }
-    return scope_measure_labels[scope_measure_param];
+    return scope_measure_pretty_label(scope_measure_param);
 }
 
 static const char *scope_param_value(uint8_t param) {
@@ -2566,6 +2488,66 @@ static const char *scope_param_value(uint8_t param) {
     return scope_display_short[scope_safe_display()];
 }
 
+// ---------------------------------------------------------------------------
+// Parameter chips (scope and generator rows) in the modern style.
+// ---------------------------------------------------------------------------
+
+static void scope_pretty_value(const char *in, char *out, uint8_t size);
+static void ui_text_copy(char *dst, const char *src, uint8_t max_len);
+static uint8_t ui_text_equal(const char *a, const char *b);
+
+// Values as the chips show them: units spaced and cased ("20 mV", "1 µs"),
+// words in sentence case ("Auto", "Normal"), short codes kept (CH1, DC, X10).
+static void ui_chip_value(const char *in, char out[16]) {
+    uint8_t digits = 0;
+    uint8_t len = 0;
+    for (const char *p = in; *p; ++p, ++len) {
+        if (*p >= '0' && *p <= '9') {
+            digits = 1;
+        }
+    }
+    if (digits) {
+        scope_pretty_value(in, out, 16);
+        return;
+    }
+    ui_text_copy(out, in, 16);
+    if (len >= 4u || ui_text_equal(in, "ON") || ui_text_equal(in, "OFF")) {
+        for (uint8_t i = 1; out[i]; ++i) {
+            if (out[i] >= 'A' && out[i] <= 'Z' && out[i - 1u] != ' ') {
+                out[i] = (char)(out[i] + 32);
+            }
+        }
+    }
+}
+
+// Card behind a chip; returns its fill so the text can blend into it.
+static uint16_t ui_chip_frame(uint16_t x, uint16_t y, uint16_t w, uint16_t accent, uint8_t active) {
+    uint16_t bg = active ? gfx_blend(accent, D_BG, 3) : D_CARD;
+    if (active) {
+        gfx_round_rect(x, y, w, 32, 10, accent, D_BG);
+        gfx_round_rect((uint16_t)(x + 2u), (uint16_t)(y + 2u), (uint16_t)(w - 4u), 28, 8, bg, accent);
+    } else {
+        gfx_round_rect(x, y, w, 32, 10, bg, D_BG);
+    }
+    return bg;
+}
+
+static void ui_draw_chip(uint16_t x, uint16_t y, uint16_t w, const char *label, const char *value,
+                         uint16_t accent, uint8_t active, uint8_t enabled) {
+    char shown[16];
+    uint16_t bg = ui_chip_frame(x, y, w, accent, active);
+    uint16_t label_fg = !enabled ? D_TRACK : (active ? accent : D_MUTED);
+    uint16_t value_fg = !enabled ? D_TRACK : (active ? D_TEXT : D_SUB);
+    const lcd_font_t *font = &font_medium;
+
+    ui_chip_value(enabled ? value : "--", shown);
+    gfx_text((int16_t)(x + 8u), (int16_t)(y + 3u), &font_small, label, label_fg, bg);
+    if (gfx_text_width(font, shown) > (uint16_t)(w - 10u)) {
+        font = &font_small;
+    }
+    gfx_text_center((int16_t)x, (int16_t)(y + (font == &font_medium ? 14u : 17u)), w, font, shown, value_fg, bg);
+}
+
 static uint16_t scope_menu_accent(void) {
     if (ui.scope_channel_menu) {
         return scope_channel_color(ui.active_ch);
@@ -2577,30 +2559,8 @@ static uint16_t scope_menu_accent(void) {
 }
 
 static void draw_scope_param_chip(uint16_t x, uint16_t y, uint16_t w, uint8_t param) {
-    uint8_t active = ui.scope_param == param;
-    uint16_t accent = scope_menu_accent();
-    uint16_t chip_bg = active ? accent : C_PANEL_2;
-    uint16_t fg = active ? C_BG : C_MUTED;
-    const char *value = scope_param_value(param);
-    uint8_t value_scale = lcd_text_width(value, 2) <= w ? 2u : 1u;
-    uint16_t value_y = (uint16_t)(y + (value_scale == 2u ? 13u : 18u));
-
-    lcd_rect(x, y, w, 32, chip_bg);
-    lcd_rect(x, y, w, 2, accent);
-    lcd_text((uint16_t)(x + 6u), (uint16_t)(y + 4u), scope_param_label(param), fg, chip_bg, 1);
-    lcd_text_center(x, value_y, w, value, fg, chip_bg, value_scale);
-    if (active) {
-        uint16_t text_w = lcd_text_width(value, value_scale);
-        uint16_t underline_w = text_w;
-        if (underline_w > w - 12u) {
-            underline_w = (uint16_t)(w - 12u);
-        }
-        lcd_rect((uint16_t)(x + (w - underline_w) / 2u),
-                 (uint16_t)(y + 29u),
-                 underline_w,
-                 2,
-                 fg);
-    }
+    ui_draw_chip(x, y, w, scope_param_label(param), scope_param_value(param),
+                 scope_menu_accent(), ui.scope_param == param, 1);
 }
 
 static void draw_scope_param_row(uint16_t x, uint16_t y) {
@@ -2633,6 +2593,11 @@ static void draw_scope_trigger_param_row(uint16_t x, uint16_t y) {
     }
 }
 
+static const char *scope_measure_pretty_label(uint8_t measure) {
+    static const char *const labels[] = {"Vpp", "Vmax", "Vmin", "Vavg", "Vrms", "Freq"};
+    return measure < 6u ? labels[measure] : scope_measure_labels[measure];
+}
+
 static const char *scope_measure_channel_state_label(uint8_t idx) {
     return scope_measure_enabled_for(idx, scope_measure_param) ? "ON" : "OFF";
 }
@@ -2649,24 +2614,8 @@ static void draw_scope_measure_chip(uint16_t x,
                                     uint16_t accent,
                                     uint8_t active,
                                     uint8_t selected) {
-    uint16_t bg = active ? accent : C_PANEL_2;
-    uint16_t fg = active ? C_BG : C_MUTED;
-    uint8_t value_scale = lcd_text_width(value, 2) <= w ? 2u : 1u;
-    uint16_t value_y = (uint16_t)(y + (value_scale == 2u ? 13u : 18u));
-
-    lcd_rect(x, y, w, 32, bg);
-    lcd_rect(x, y, w, 2, accent);
-    lcd_text((uint16_t)(x + 6u), (uint16_t)(y + 4u), label, fg, bg, 1);
-    lcd_text_center(x, value_y, w, value, fg, bg, value_scale);
-    if (selected) {
-        uint16_t text_w = lcd_text_width(value, value_scale);
-        uint16_t underline_w = text_w > (uint16_t)(w - 12u) ? (uint16_t)(w - 12u) : text_w;
-        lcd_rect((uint16_t)(x + (w - underline_w) / 2u),
-                 (uint16_t)(y + 29u),
-                 underline_w,
-                 2,
-                 active ? fg : accent);
-    }
+    (void)selected;
+    ui_draw_chip(x, y, w, label, value, accent == C_GRID ? D_MUTED : accent, active, 1);
 }
 
 static void draw_scope_measure_param_row(uint16_t x, uint16_t y) {
@@ -2683,7 +2632,7 @@ static void draw_scope_measure_param_row(uint16_t x, uint16_t y) {
                             y,
                             UI_PARAM_CHIP_W,
                             "VALUE",
-                            scope_measure_labels[scope_measure_param],
+                            scope_measure_pretty_label(scope_measure_param),
                             C_SCOPE,
                             ui.scope_measure_menu_sel == SCOPE_MEASURE_MENU_VALUE,
                             ui.scope_measure_menu_sel == SCOPE_MEASURE_MENU_VALUE);
@@ -3324,21 +3273,7 @@ static void draw_scope_move_chip(uint16_t x,
                                  const char *label,
                                  const char *value,
                                  uint8_t active) {
-    uint16_t accent = scope_channel_color(ui.active_ch);
-    uint16_t bg = active ? accent : C_PANEL_2;
-    uint16_t fg = active ? C_BG : C_MUTED;
-    uint8_t value_scale = lcd_text_width(value, 2) <= w ? 2u : 1u;
-    uint16_t value_y = (uint16_t)(y + (value_scale == 2u ? 13u : 18u));
-
-    lcd_rect(x, y, w, 32, bg);
-    lcd_rect(x, y, w, 2, accent);
-    lcd_text((uint16_t)(x + 6u), (uint16_t)(y + 4u), label, fg, bg, 1);
-    lcd_text_center(x, value_y, w, value, fg, bg, value_scale);
-    if (active) {
-        uint16_t text_w = lcd_text_width(value, value_scale);
-        uint16_t underline_w = text_w > (uint16_t)(w - 12u) ? (uint16_t)(w - 12u) : text_w;
-        lcd_rect((uint16_t)(x + (w - underline_w) / 2u), (uint16_t)(y + 29u), underline_w, 2, fg);
-    }
+    ui_draw_chip(x, y, w, label, value, scope_channel_color(ui.active_ch), active, 1);
 }
 
 static void draw_scope_move_param_row(uint16_t x, uint16_t y) {
@@ -3375,12 +3310,12 @@ static void draw_softkeys(void) {
         return;
     }
     if (ui.mode == UI_MODE_GEN) {
-        lcd_rect(0, Y_SOFT, LCD_WIDTH, H_SOFT, C_BG);
+        lcd_rect(0, Y_SOFT, LCD_WIDTH, H_SOFT, D_BG);
         draw_gen_param_row(GEN_PARAM_ROW_X, (uint16_t)(Y_SOFT + 4u));
         return;
     }
     if (ui.mode == UI_MODE_SCOPE) {
-        lcd_rect(0, Y_SOFT, LCD_WIDTH, H_SOFT, C_BG);
+        lcd_rect(0, (uint16_t)(Y_SOFT - 4u), LCD_WIDTH, (uint16_t)(H_SOFT + 4u), D_BG);
         if (ui.scope_move_mode) {
             draw_scope_move_param_row(UI_PARAM_ROW_X, (uint16_t)(Y_SOFT + 4u));
         } else if (ui.scope_cursor_menu) {
@@ -5652,7 +5587,8 @@ static void scope_pretty_value(const char *in, char *out, uint8_t size) {
     for (; *in && o + 3u < size; ++in) {
         char c = *in;
         uint8_t alpha = (uint8_t)((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'));
-        if (alpha && !spaced && o) {
+        uint8_t after_number = (uint8_t)(o && ((out[o - 1u] >= '0' && out[o - 1u] <= '9') || out[o - 1u] == '.'));
+        if (alpha && !spaced && after_number) {
             out[o++] = ' ';
             spaced = 1;
             if (c == 'u' && in[1] >= 'A') {
@@ -5811,10 +5747,7 @@ static void draw_scope_measure_text(uint16_t left,
     if (measure >= SCOPE_MEASURE_COUNT) {
         measure = SCOPE_MEASURE_VPP;
     }
-    {
-        static const char *const pretty_labels[] = {"Vpp", "Vmax", "Vmin", "Vavg", "Vrms", "Freq"};
-        label = measure < 6u ? pretty_labels[measure] : scope_measure_labels[measure];
-    }
+    label = scope_measure_pretty_label(measure);
     scope_measure_value_for(value, idx, measure);
 
     {
@@ -5887,24 +5820,6 @@ static void draw_scope_measure_readout(uint16_t gx, uint16_t gy, uint16_t gw, ui
 
 static uint16_t scope_channel_color(uint8_t ch) {
     return ch == 2u ? C_CH2 : C_CH1;
-}
-
-static uint16_t scope_channel_header_color(uint8_t ch) {
-    uint8_t idx = ch == 2u ? 1u : 0u;
-
-    if (!scope_ch_enabled[idx]) {
-        return C_GRID;
-    }
-    return ui.active_ch == ch ? C_TEXT : scope_channel_color(ch);
-}
-
-static void draw_scope_channel_headers(uint16_t ch1_x, uint16_t ch2_x, uint16_t y, uint16_t bg) {
-    if (scope_ch_enabled[0]) {
-        lcd_text(ch1_x, y, "CH1", scope_channel_header_color(1), bg, 1);
-    }
-    if (scope_ch_enabled[1]) {
-        lcd_text(ch2_x, y, "CH2", scope_channel_header_color(2), bg, 1);
-    }
 }
 
 static int16_t scope_channel_center(int16_t base, uint8_t ch2) {
@@ -6498,103 +6413,6 @@ static void draw_scope_trace(uint16_t color,
     }
 }
 
-static void draw_scope_chrome_live(void) {
-    uint16_t gx = 10;
-    uint16_t gy = 55;
-    uint16_t gw = 300;
-    uint16_t gh = 124;
-    uint16_t grid_bg = RGB565(2, 4, 8);
-
-#if SCOPE_UI_SAFE_STUB
-    scope_sanitize_state();
-    int16_t ch1_center = scope_channel_center(91, 0);
-    int16_t ch2_center = scope_channel_center(118, 1);
-    lcd_rect(0, 55, LCD_WIDTH, 140, C_BG);
-    draw_scope_stub_grid(gx, gy, gw, gh, grid_bg);
-    if (ui.scope_display == SCOPE_DISPLAY_XY) {
-        draw_scope_xy(gx, gy, gw, gh, C_SCOPE);
-    } else {
-        if (ui.scope_afterglow) {
-            if (scope_ch_enabled[0]) {
-                draw_scope_stub_trace(gx, gy, gw, gh, ch1_center, scope_stub_amp(0), scope_dim_color(C_CH1), (uint8_t)(ui.scope_phase - 18u));
-            }
-            if (scope_ch_enabled[1]) {
-                draw_scope_stub_trace(gx, gy, gw, gh, ch2_center, scope_stub_amp(1), scope_dim_color(C_CH2), (uint8_t)(ui.scope_phase + 46u));
-            }
-        }
-        if (scope_ch_enabled[0]) {
-            draw_scope_stub_trace(gx, gy, gw, gh, ch1_center, scope_stub_amp(0), C_CH1, (uint8_t)ui.scope_phase);
-        }
-        if (scope_ch_enabled[1]) {
-            draw_scope_stub_trace(gx, gy, gw, gh, ch2_center, scope_stub_amp(1), C_CH2, (uint8_t)(ui.scope_phase + 64u));
-        }
-        draw_scope_channel_markers(gx, gy, gh, ch1_center, ch2_center, grid_bg);
-    }
-    draw_scope_trigger_line(gx, gy, gw, gh, grid_bg);
-    draw_scope_cursors(gx, gy, gw, gh, grid_bg);
-    draw_scope_cursor_readout(gx, gy, gw, gh, grid_bg);
-    draw_scope_hpos_indicator(gx, gy, gw, gh, grid_bg);
-    draw_scope_measurements(gx, gy, gw, gh, grid_bg);
-    draw_scope_channel_headers(18, 262, 61, grid_bg);
-    draw_scope_scale_status(182, C_BG);
-    return;
-#endif
-
-    lcd_rect(0, 55, LCD_WIDTH, 124, C_BG);
-    lcd_rect(gx, gy, gw, gh, grid_bg);
-    lcd_frame(gx, gy, gw, gh, C_GRID);
-    for (uint8_t div = 1; div < SCOPE_X_DIVS; ++div) {
-        uint16_t x = (uint16_t)(gx + ((uint32_t)gw * div) / SCOPE_X_DIVS);
-        lcd_rect(x, (uint16_t)(gy + 1u), 1, (uint16_t)(gh - 2u), C_GRID);
-    }
-    for (uint8_t div = 1; div < SCOPE_Y_DIVS; ++div) {
-        uint16_t y = (uint16_t)(gy + ((uint32_t)gh * div) / SCOPE_Y_DIVS);
-        lcd_rect((uint16_t)(gx + 1u), y, (uint16_t)(gw - 2u), 1, C_GRID);
-    }
-    lcd_rect((uint16_t)(gx + ((uint32_t)gw * 6u) / SCOPE_X_DIVS), (uint16_t)(gy + 1u), 2, (uint16_t)(gh - 2u), RGB565(67, 85, 95));
-    lcd_rect((uint16_t)(gx + 1u), (uint16_t)(gy + ((uint32_t)gh * 4u) / SCOPE_Y_DIVS), (uint16_t)(gw - 2u), 2, RGB565(67, 85, 95));
-
-    if (scope_frame_valid || !scope_hw_enabled()) {
-        if (ui.scope_display == SCOPE_DISPLAY_XY) {
-            draw_scope_xy(gx, gy, gw, gh, C_SCOPE);
-        } else {
-            int16_t plot_x0 = (int16_t)(gx + 1u);
-            uint16_t plot_w = (uint16_t)(gw - 3u);
-            int16_t ch1_center = scope_channel_center(91, 0);
-            int16_t ch2_center = scope_channel_center(111, 1);
-            if (scope_slow_roll_active()) {
-                draw_scope_slow_roll_trace(0, plot_x0, plot_w, ch1_center, 48, gy, gh, C_CH1);
-                draw_scope_slow_roll_trace(1, plot_x0, plot_w, ch2_center, 48, gy, gh, C_CH2);
-            } else {
-                draw_scope_afterglow_trace(0, plot_x0, plot_w, C_CH1);
-                draw_scope_afterglow_trace(1, plot_x0, plot_w, C_CH2);
-                draw_scope_trace(C_CH1, 0, plot_x0, ch1_center, 48, plot_w, gy, gh);
-                draw_scope_trace(C_CH2, 1, plot_x0, ch2_center, 48, plot_w, gy, gh);
-            }
-            draw_scope_channel_markers(gx, gy, gh, ch1_center, ch2_center, grid_bg);
-        }
-        if (scope_fft_src != 4u) {
-            draw_scope_trigger_line(gx, gy, gw, gh, grid_bg);
-        }
-        draw_scope_cursors(gx, gy, gw, gh, grid_bg);
-        draw_scope_cursor_readout(gx, gy, gw, gh, grid_bg);
-        draw_scope_hpos_indicator(gx, gy, gw, gh, grid_bg);
-        draw_scope_measure_readout((uint16_t)(gx + 5u), gy, (uint16_t)(gw - 10u), gh, grid_bg);
-    } else {
-        lcd_text_center(gx, 103, gw, scope_hw_ready() ? "WAIT" : "FPGA", C_MUTED, grid_bg, 2);
-    }
-
-    draw_scope_channel_headers(18, 262, 61, grid_bg);
-
-    lcd_rect(0, 180, LCD_WIDTH, 19, C_BG);
-    draw_scope_scale_status(182, C_BG);
-}
-
-static void draw_scope(void) {
-    lcd_rect(0, Y_BODY, LCD_WIDTH, H_BODY, C_BG);
-    draw_scope_chrome_live();
-}
-
 static void ui_draw_math_waveform(uint16_t gx, uint16_t gy, uint16_t gw, uint16_t gh) {
     if (!scope_math_mode || !scope_frame_valid ||
         !scope_ch_enabled[0] || !scope_ch_enabled[1] || gw < 4u || gh < 4u) {
@@ -6688,7 +6506,6 @@ static void draw_scope_immersive(void) {
     draw_scope_cursor_readout(gx, gy, gw, gh, grid_bg);
     draw_scope_hpos_indicator(gx, gy, gw, gh, grid_bg);
     draw_scope_measurements(gx, gy, gw, gh, grid_bg);
-    draw_scope_channel_headers(16, 276, 34, grid_bg);
     draw_scope_scale_status(220, grid_bg);
     return;
 #endif
@@ -6954,42 +6771,75 @@ static int16_t gen_wave_preview_y(uint16_t point, uint16_t width, int16_t center
     return (int16_t)(center + scaled_amp - (int16_t)((uint32_t)sample * (uint16_t)(scaled_amp * 2) / 255u));
 }
 
+static const char *const gen_wave_names[] = {
+    "Sine", "Square", "Sawtooth", "Half wave", "Full wave",
+    "Step up", "Step down", "Exp rise", "Exp fall", "DC",
+    "Multi-audio", "Sinker pulse", "Lorentz", "Triangle", "Noise", "Arbitrary",
+};
+
+// Preview: a rounded plot with a dotted centre line and the waveform drawn
+// anti-aliased in the generator's violet.
 static void draw_gen_wave_preview(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t bg) {
-    uint16_t grid_bg = RGB565(2, 4, 8);
     uint16_t center_y = (uint16_t)(y + h / 2u);
     uint16_t plot_x0 = (uint16_t)(x + 8u);
     uint16_t plot_w = (uint16_t)(w - 16u);
+    int16_t amp = (int16_t)(h / 2u - 12u);
     int16_t prev_x = (int16_t)plot_x0;
-    int16_t prev_y = gen_wave_preview_y(0, plot_w, (int16_t)center_y, (int16_t)(h / 2u - 11u));
+    int16_t prev_y = gen_wave_preview_y(0, plot_w, (int16_t)center_y, amp);
 
-    (void)bg;
-    lcd_rect(x, y, w, h, grid_bg);
-    lcd_frame(x, y, w, h, C_GRID);
-    for (uint16_t gx = (uint16_t)(x + w / 4u); gx < (uint16_t)(x + w); gx = (uint16_t)(gx + w / 4u)) {
-        lcd_rect(gx, (uint16_t)(y + 1u), 1, (uint16_t)(h - 2u), C_PANEL_2);
+    gfx_round_rect(x, y, w, h, 10, D_PLOT, bg);
+    if (!lcd_collecting()) {
+        for (uint16_t px = (uint16_t)(x + 6u); px < (uint16_t)(x + w - 6u); px = (uint16_t)(px + 3u)) {
+            lcd_pixel((int16_t)px, (int16_t)center_y, D_PLOT_AXIS);
+        }
+        for (uint8_t q = 1; q < 4u; ++q) {
+            uint16_t gx = (uint16_t)(x + (uint32_t)w * q / 4u);
+            for (uint16_t py = (uint16_t)(y + 5u); py < (uint16_t)(y + h - 5u); py = (uint16_t)(py + 4u)) {
+                lcd_pixel((int16_t)gx, (int16_t)py, D_PLOT_DOT);
+            }
+        }
     }
-    lcd_rect((uint16_t)(x + 1u), center_y, (uint16_t)(w - 2u), 1, RGB565(58, 74, 88));
-
-    for (uint16_t px = 3; px <= plot_w; px = (uint16_t)(px + 3u)) {
+    // One column at a time: a solid span from this point to the next, two
+    // pixels thick, with a soft pixel at each end. Unlike joined line
+    // segments this never paints over itself, so the trace stays even.
+    (void)prev_x;
+    for (uint16_t px = 0; px < plot_w; ++px) {
+        int16_t y0 = px ? prev_y : gen_wave_preview_y(0, plot_w, (int16_t)center_y, amp);
+        int16_t y1 = gen_wave_preview_y((uint16_t)(px + 1u), plot_w, (int16_t)center_y, amp);
+        int16_t lo = y0 < y1 ? y0 : y1;
+        int16_t hi = (int16_t)((y0 > y1 ? y0 : y1) + 1);
         int16_t sx = (int16_t)(plot_x0 + px);
-        int16_t sy = gen_wave_preview_y(px, plot_w, (int16_t)center_y, (int16_t)(h / 2u - 11u));
-        lcd_line(prev_x, prev_y, sx, sy, C_GEN);
-        lcd_line(prev_x, (int16_t)(prev_y + 1), sx, (int16_t)(sy + 1), C_GEN);
-        prev_x = sx;
-        prev_y = sy;
+        lcd_rect((uint16_t)sx, (uint16_t)lo, 1, (uint16_t)(hi - lo + 1), D_GEN);
+        lcd_pixel(sx, (int16_t)(lo - 1), gfx_blend(D_GEN, D_PLOT, 6));
+        lcd_pixel(sx, (int16_t)(hi + 1), gfx_blend(D_GEN, D_PLOT, 6));
+        prev_y = y1;
     }
-
 }
 
-static void draw_gen_output_panel(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t bg) {
-    uint16_t panel_bg = ui.running ? RGB565(12, 56, 39) : C_PANEL;
-    uint16_t accent = ui.running ? C_DMM : C_WARN;
 
-    (void)bg;
-    lcd_rect(x, y, w, h, panel_bg);
-    lcd_frame(x, y, w, h, accent);
-    lcd_rect(x, y, w, 4, accent);
-    lcd_text_center(x, (uint16_t)(y + h / 2u - 10u), w, ui.running ? "ON" : "OFF", accent, panel_bg, 3);
+// Wave name and preview in one card.
+static void draw_gen_wave_card(uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
+    uint8_t wave = ui.gen_wave < SIGGEN_WAVE_COUNT ? ui.gen_wave : SIGGEN_WAVE_SINE;
+    gfx_round_rect(x, y, w, h, 14, D_CARD, D_BG);
+    gfx_text((int16_t)(x + 12u), (int16_t)(y + 6u), &font_small, "WAVEFORM", D_MUTED, D_CARD);
+    gfx_text((int16_t)(x + 12u), (int16_t)(y + 17u), &font_large, gen_wave_names[wave], D_TEXT, D_CARD);
+    draw_gen_wave_preview((uint16_t)(x + 8u), (uint16_t)(y + 54u), (uint16_t)(w - 16u), (uint16_t)(h - 62u), D_CARD);
+}
+
+// Output state: a tall card with a power icon, green when the output is on.
+static void draw_gen_output_panel(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t bg) {
+    uint8_t on = ui.running;
+    uint16_t card = on ? D_GREEN_CARD : D_CARD;
+    uint16_t accent = on ? D_GREEN : D_MUTED;
+    uint16_t cx = (uint16_t)(x + w / 2u);
+    uint16_t cy = (uint16_t)(y + h / 2u - 6u);
+
+    gfx_round_rect(x, y, w, h, 14, card, bg);
+    gfx_text_center((int16_t)x, (int16_t)(y + 6u), w, &font_small, "OUTPUT", on ? D_GREEN_SUB : D_MUTED, card);
+    gfx_round_rect((uint16_t)(cx - 22u), (uint16_t)(cy - 22u), 44, 44, 22, on ? D_GREEN : D_TRACK, card);
+    gfx_text((int16_t)(cx - 8u), (int16_t)(cy - 8u), &font_icons, ICON_START_MD, on ? D_BG : D_SUB, on ? D_GREEN : D_TRACK);
+    gfx_text_center((int16_t)x, (int16_t)(cy + 28u), w, &font_large, on ? "On" : "Off", on ? D_TEXT : D_SUB, card);
+    (void)accent;
 }
 
 // Halfway between two colours, channel by channel in RGB565. The number
@@ -7057,75 +6907,75 @@ static void draw_digit_field(uint16_t x, uint16_t y, uint32_t value,
     }
 }
 
-static void draw_gen_editor_digit(uint16_t x, uint16_t y, char digit, uint8_t selected,
-                                  uint8_t dim, uint16_t fg, uint16_t bg) {
-    char text[2] = {digit, 0};
-    uint16_t color = selected ? C_TEXT : (dim ? color_mix(fg, bg) : fg);
+// Digit-by-digit editors: fixed-width digits; the place being edited sits
+// on a solid accent block, leading zeros are dimmed.
+static int16_t draw_gen_editor_digits(int16_t x, uint16_t y, const char *digits, uint8_t count,
+                                      int8_t selected, uint8_t dim, int8_t dot_after,
+                                      uint16_t fg, uint16_t bg) {
+    uint16_t adv = gfx_text_width(&font_medium, "0");
+    for (uint8_t i = 0; i < count; ++i) {
+        char text[2] = {digits[i], 0};
+        if ((int8_t)i == selected) {
+            gfx_round_rect((uint16_t)(x - 2), (uint16_t)(y + 1u), (uint16_t)(adv + 3u), 16, 4, D_GEN, bg);
+            gfx_text(x, (int16_t)y, &font_medium, text, D_BG, D_GEN);
+        } else {
+            gfx_text(x, (int16_t)y, &font_medium, text, i < dim ? D_TRACK : fg, bg);
+        }
+        x = (int16_t)(x + (int16_t)adv);
+        if ((int8_t)i == dot_after) {
+            x = gfx_text(x, (int16_t)y, &font_medium, ".", fg, bg);
+        }
+    }
+    return x;
+}
 
-    lcd_text(x, y, text, color, bg, 2);
+static void draw_gen_editor_unit(int16_t x, uint16_t y, const char *unit, uint8_t selected, uint16_t fg, uint16_t bg) {
     if (selected) {
-        lcd_rect((uint16_t)(x + 1u), (uint16_t)(y + 15u), 10, 2, C_TEXT);
+        uint16_t w = (uint16_t)(gfx_text_width(&font_small, unit) + 4u);
+        gfx_round_rect((uint16_t)(x - 2), (uint16_t)(y + 3u), w, 13, 3, D_GEN, bg);
+        gfx_text(x, (int16_t)(y + 3u), &font_small, unit, D_BG, D_GEN);
+    } else {
+        gfx_text(x, (int16_t)(y + 3u), &font_small, unit, fg, bg);
     }
 }
 
 static void draw_gen_param_chip(uint16_t x, uint16_t y, uint16_t w, uint8_t param, const char *value) {
     uint8_t enabled = gen_param_available(param);
     uint8_t active = enabled && ui.gen_param == param;
-    uint16_t chip_bg = active ? C_GEN : (enabled ? C_PANEL_2 : C_TOP);
-    uint16_t fg = active ? C_BG : (enabled ? C_MUTED : C_GRID);
-    const char *shown_value = enabled ? value : "--";
-    uint8_t unit = gen_freq_unit < GEN_FREQ_UNIT_COUNT ? gen_freq_unit : 0u;
-    char digits[5];
+    uint8_t arbitrary = ui.gen_wave == SIGGEN_WAVE_ARBITRARY;
+    uint16_t bg;
+    uint16_t fg = active ? D_TEXT : D_SUB;
+    uint16_t vy = (uint16_t)(y + 14u);
+    int8_t sel = active ? (int8_t)gen_freq_edit_pos : -1;
 
-    lcd_rect(x, y, w, 32, chip_bg);
-    lcd_rect(x, y, w, 2, C_GEN);
-    lcd_text((uint16_t)(x + 6u), (uint16_t)(y + 4u), gen_param_labels[param], fg, chip_bg, 1);
-    if (param == GEN_PARAM_FREQ && ui.gen_wave != SIGGEN_WAVE_ARBITRARY) {
-        uint16_t value_y = (uint16_t)(y + 15u);
-        uint16_t digit_x = (uint16_t)(x + 4u);
-        format_gen_freq_digits(digits);
-        uint8_t dim = editor_dim_digits(digits, GEN_FREQ_EDIT_DIGITS);
-        for (uint8_t i = 0; i < GEN_FREQ_EDIT_DIGITS; ++i) {
-            uint16_t px = (uint16_t)(digit_x + i * 12u);
-            uint8_t selected = (uint8_t)(active && gen_freq_edit_pos == i);
-            draw_gen_editor_digit(px, value_y, digits[i], selected, (uint8_t)(i < dim), fg, chip_bg);
+    if ((param == GEN_PARAM_FREQ && !arbitrary) ||
+        (param == GEN_PARAM_DUTY && enabled && !arbitrary) ||
+        (param == GEN_PARAM_AMP && enabled)) {
+        char digits[5];
+        int16_t ex;
+        bg = ui_chip_frame(x, y, w, D_GEN, active);
+        gfx_text((int16_t)(x + 8u), (int16_t)(y + 3u), &font_small, gen_param_labels[param], active ? D_GEN : D_MUTED, bg);
+        if (param == GEN_PARAM_FREQ) {
+            static const char *const units[] = {"Hz", "kHz", "MHz"};
+            uint8_t unit = gen_freq_unit < GEN_FREQ_UNIT_COUNT ? gen_freq_unit : 0u;
+            format_gen_freq_digits(digits);
+            ex = draw_gen_editor_digits((int16_t)(x + 7u), vy, digits, GEN_FREQ_EDIT_DIGITS, sel,
+                                        editor_dim_digits(digits, GEN_FREQ_EDIT_DIGITS), -1, fg, bg);
+            draw_gen_editor_unit((int16_t)(ex + 3), vy, units[unit < 3u ? unit : 0u],
+                                 (uint8_t)(active && gen_freq_edit_pos == GEN_FREQ_EDIT_UNIT), fg, bg);
+        } else if (param == GEN_PARAM_DUTY) {
+            format_u16_3(gen_clamped_duty(), digits);
+            ex = draw_gen_editor_digits((int16_t)(x + 12u), vy, digits, GEN_DUTY_EDIT_DIGITS, sel,
+                                        editor_dim_digits(digits, GEN_DUTY_EDIT_DIGITS), -1, fg, bg);
+            gfx_text((int16_t)(ex + 2), (int16_t)vy, &font_medium, "%", fg, bg);
+        } else {
+            format_u8_2(gen_clamped_amp_tenths(), digits);
+            ex = draw_gen_editor_digits((int16_t)(x + 18u), vy, digits, GEN_AMP_EDIT_DIGITS, sel, 0, 0, fg, bg);
+            gfx_text((int16_t)(ex + 2), (int16_t)vy, &font_medium, "V", fg, bg);
         }
-        gen_freq_draw_unit((uint16_t)(x + 54u), (uint16_t)(y + 12u), unit, fg, chip_bg,
-                           (uint8_t)(active && gen_freq_edit_pos == GEN_FREQ_EDIT_UNIT));
-        (void)shown_value;
         return;
     }
-    if (param == GEN_PARAM_DUTY && enabled && ui.gen_wave != SIGGEN_WAVE_ARBITRARY) {
-        char duty_digits[4];
-        uint16_t value_y = (uint16_t)(y + 15u);
-        uint16_t digit_x = (uint16_t)(x + 8u);
-        format_u16_3(gen_clamped_duty(), duty_digits);
-        uint8_t dim = editor_dim_digits(duty_digits, GEN_DUTY_EDIT_DIGITS);
-        for (uint8_t i = 0; i < GEN_DUTY_EDIT_DIGITS; ++i) {
-            uint16_t px = (uint16_t)(digit_x + i * 12u);
-            uint8_t selected = (uint8_t)(active && gen_freq_edit_pos == i);
-            draw_gen_editor_digit(px, value_y, duty_digits[i], selected, (uint8_t)(i < dim), fg, chip_bg);
-        }
-        lcd_text((uint16_t)(x + 50u), (uint16_t)(y + 18u), "%", fg, chip_bg, 1);
-        (void)shown_value;
-        return;
-    }
-    if (param == GEN_PARAM_AMP && enabled) {
-        char amp_digits[3];
-        uint16_t value_y = (uint16_t)(y + 15u);
-        uint16_t digit_x = (uint16_t)(x + 15u);
-        format_u8_2(gen_clamped_amp_tenths(), amp_digits);
-        for (uint8_t i = 0; i < GEN_AMP_EDIT_DIGITS; ++i) {
-            uint16_t px = (uint16_t)(i == 0u ? digit_x : (uint16_t)(digit_x + 24u));
-            uint8_t selected = (uint8_t)(active && gen_freq_edit_pos == i);
-            draw_gen_editor_digit(px, value_y, amp_digits[i], selected, 0, fg, chip_bg);
-        }
-        lcd_text((uint16_t)(digit_x + 14u), (uint16_t)(value_y + 8u), ".", fg, chip_bg, 1);
-        lcd_text((uint16_t)(x + 51u), (uint16_t)(y + 18u), "V", fg, chip_bg, 1);
-        (void)shown_value;
-        return;
-    }
-    lcd_text_center(x, (uint16_t)(y + 13u), w, shown_value, fg, chip_bg, 2);
+    ui_draw_chip(x, y, w, gen_param_labels[param], value, D_GEN, active, enabled);
 }
 
 static void draw_gen_param_row(uint16_t x, uint16_t y) {
@@ -7172,7 +7022,7 @@ static void draw_gen_param_row(uint16_t x, uint16_t y) {
         }
     }
 
-    draw_gen_param_chip(x, y, GEN_PARAM_CHIP_W, GEN_PARAM_WAVE, gen_wave_short_labels[wave]);
+    draw_gen_param_chip(x, y, GEN_PARAM_CHIP_W, GEN_PARAM_WAVE, gen_wave_names[wave]);
     draw_gen_param_chip((uint16_t)(x + GEN_PARAM_CHIP_W + GEN_PARAM_CHIP_GAP),
                         y,
                         GEN_PARAM_CHIP_W,
@@ -7188,16 +7038,6 @@ static void draw_gen_param_row(uint16_t x, uint16_t y) {
                         GEN_PARAM_CHIP_W,
                         GEN_PARAM_AMP,
                         amp_val);
-}
-
-static void draw_generator(void) {
-    lcd_rect(0, Y_BODY, LCD_WIDTH, H_BODY, C_BG);
-    draw_mode_tabs();
-    lcd_rect(10, 55, 303, 136, C_PANEL);
-    lcd_rect(10, 55, 5, 136, C_GEN);
-    lcd_text(22, 58, gen_wave_labels[ui.gen_wave], C_GEN, C_PANEL, 3);
-    draw_gen_wave_preview(22, 101, 204, 76, C_PANEL);
-    draw_gen_output_panel(GEN_OUTPUT_X, 101, GEN_OUTPUT_W, 76, C_PANEL);
 }
 
 static void ui_draw_gen_sweep_menu(void) {
@@ -7293,16 +7133,14 @@ static void ui_draw_gen_sweep_menu(void) {
 }
 
 static void draw_generator_immersive(void) {
-    lcd_rect(0, 0, LCD_WIDTH, LCD_HEIGHT, C_BG);
-    draw_micro_status(6, 6, C_BG);
-    draw_battery_status_overlay(C_BG);
-    lcd_text(18, 31, gen_wave_labels[ui.gen_wave], C_GEN, C_BG, 3);
-    draw_gen_wave_preview(14, 68, 220, 123, C_BG);
-    draw_gen_output_panel(GEN_OUTPUT_X, 68, GEN_OUTPUT_W, 123, C_BG);
+    lcd_rect(0, 0, LCD_WIDTH, LCD_HEIGHT, D_BG);
+    ui_draw_status_bar("Signal Generator", D_GEN);
+    draw_gen_wave_card(8, 26, 226, 172);
+    draw_gen_output_panel(240, 26, 72, 172, D_BG);
+    lcd_rect(0, Y_SOFT, LCD_WIDTH, H_SOFT, D_BG);
     draw_gen_param_row(GEN_PARAM_ROW_X, (uint16_t)(Y_SOFT + 4u));
     ui_draw_gen_sweep_menu();
 }
-
 
 // ---------------------------------------------------------------------------
 // Main menu: a 2x2 grid of tool cards in the multimeter screen's style.
@@ -7788,52 +7626,27 @@ static uint8_t full_scene_key(void) {
     return (uint8_t)(((uint8_t)ui.mode << 1) | (ui.chrome_visible ? 1u : 0u));
 }
 
+// Every tool draws its own full-screen view; the old header-and-tabs
+// layout only ever showed behind the menu and has been retired.
+static void ui_draw_mode_screen(void) {
+    if (ui.mode == UI_MODE_SCOPE) {
+        draw_scope_immersive();
+    } else if (ui.mode == UI_MODE_GEN) {
+        draw_generator_immersive();
+    } else {
+        draw_dmm_immersive();
+    }
+}
+
 static void ui_draw_full_scene(void) {
     if (full_scene_clear) {
         lcd_rect(0, 0, LCD_WIDTH, LCD_HEIGHT, C_BG);
     }
-    if (!ui.chrome_visible || ui.mode == UI_MODE_DMM) {
-        if (ui.mode == UI_MODE_SCOPE) {
-            draw_scope_immersive();
-        } else if (ui.mode == UI_MODE_GEN) {
-            draw_generator_immersive();
-        } else {
-            draw_dmm_immersive();
-        }
-        return;
-    }
-
-    draw_header();
-    if (ui.mode == UI_MODE_SCOPE) {
-        draw_scope();
-    } else if (ui.mode == UI_MODE_GEN) {
-        draw_generator();
-    } else {
-        draw_dmm();
-    }
-    draw_softkeys();
+    ui_draw_mode_screen();
 }
 
 static void ui_draw_mode_content_scene(void) {
-    if (!ui.chrome_visible || ui.mode == UI_MODE_DMM) {
-        if (ui.mode == UI_MODE_SCOPE) {
-            draw_scope_immersive();
-        } else if (ui.mode == UI_MODE_GEN) {
-            draw_generator_immersive();
-        } else {
-            draw_dmm_immersive();
-        }
-        return;
-    }
-
-    if (ui.mode == UI_MODE_SCOPE) {
-        draw_scope();
-    } else if (ui.mode == UI_MODE_GEN) {
-        draw_generator();
-    } else {
-        draw_dmm();
-    }
-    draw_softkeys();
+    ui_draw_mode_screen();
 }
 
 static void ui_draw_local_change_scene(void) {
@@ -7874,8 +7687,6 @@ static void ui_draw_battery_status_scene(void) {
 static void ui_draw_scope_frame_scene(void) {
     if (ui.mode != UI_MODE_SCOPE) {
         ui_draw_mode_content_scene();
-    } else if (ui.chrome_visible) {
-        draw_scope_chrome_live();
     } else {
         draw_scope_immersive();
     }
@@ -7894,16 +7705,8 @@ static void ui_draw_gen_preview_params_scene(void) {
         ui_draw_local_change_scene();
         return;
     }
-    if (ui.chrome_visible) {
-        lcd_rect(10, 55, 220, 136, C_PANEL);
-        lcd_rect(10, 55, 5, 136, C_GEN);
-        lcd_text(22, 58, gen_wave_labels[ui.gen_wave], C_GEN, C_PANEL, 3);
-        draw_gen_wave_preview(22, 101, 204, 76, C_PANEL);
-    } else {
-        lcd_rect(14, 31, 220, 160, C_BG);
-        lcd_text(18, 31, gen_wave_labels[ui.gen_wave], C_GEN, C_BG, 3);
-        draw_gen_wave_preview(14, 68, 220, 123, C_BG);
-    }
+    draw_gen_wave_card(8, 26, 226, 172);
+    draw_gen_output_panel(240, 26, 72, 172, D_BG);
     draw_gen_param_row(GEN_PARAM_ROW_X, (uint16_t)(Y_SOFT + 4u));
 }
 

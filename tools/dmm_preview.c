@@ -140,6 +140,9 @@ static void scope_shot(const char *name) {
     ui.chrome_visible = 0;
     scope_fill();
     draw_scope_immersive();
+    if (ui.softkeys_ms || scope_any_menu_open()) {
+        draw_softkeys();
+    }
     save(name);
     ui.mode = UI_MODE_DMM;
 }
@@ -209,6 +212,33 @@ int main(void) {
     ui.running = 1;
     ui.active_ch = 1;
     ui.scope_trigger_edge = 0;
+    ui.softkeys_ms = 1000;
+    ui.scope_param = SCOPE_PARAM_TIME;
+    scope_shot("scope-row-main");
+    ui.softkeys_ms = 0;
+    ui.scope_channel_menu = 1; ui.scope_param = scope_channel_param_order[1];
+    scope_shot("scope-row-channel");
+    ui.scope_channel_menu = 0;
+    ui.scope_trigger_menu = 1; ui.scope_param = scope_trigger_param_order[1];
+    scope_shot("scope-row-trigger");
+    ui.scope_trigger_menu = 0;
+    ui.scope_measure_menu = 1; ui.scope_measure_menu_sel = SCOPE_MEASURE_MENU_VALUE;
+    scope_shot("scope-row-measure");
+    ui.scope_measure_menu = 0;
+
+    ui.mode = UI_MODE_GEN;
+    ui.gen_wave = SIGGEN_WAVE_SINE; ui.running = 1;
+    ui.gen_param = GEN_PARAM_FREQ; gen_freq_edit_pos = 1;
+    draw_generator_immersive(); save("gen-1");
+    ui.gen_wave = SIGGEN_WAVE_SQUARE; ui.running = 0;
+    ui.gen_param = GEN_PARAM_DUTY; gen_freq_edit_pos = 1;
+    draw_generator_immersive(); save("gen-2");
+    ui.gen_wave = SIGGEN_WAVE_TRIANGLE; ui.running = 1;
+    ui.gen_param = GEN_PARAM_WAVE;
+    draw_generator_immersive(); save("gen-3");
+    ui.gen_wave = SIGGEN_WAVE_SINE; ui.gen_param = GEN_PARAM_AMP; gen_freq_edit_pos = 0;
+    draw_generator_immersive(); save("gen-4");
+    ui.mode = UI_MODE_DMM; ui.running = 1;
 
     ui.overlay = UI_OVERLAY_SETTINGS;
     ui.storage_known = 1; ui.storage_total_kb = 8192; ui.storage_free_kb = 7373;
