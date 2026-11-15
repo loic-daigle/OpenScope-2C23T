@@ -160,6 +160,23 @@ int main(void) {
         snprintf(name, sizeof(name), "menu-%u", (unsigned)i + 1u);
         save(name);
     }
+    ui.overlay = UI_OVERLAY_SETTINGS;
+    ui.storage_known = 1; ui.storage_total_kb = 8192; ui.storage_free_kb = 7373;
+    for (uint8_t i = 0; i < 6u; ++i) {
+        char name[32];
+        ui.settings_row = i;
+        draw_settings_menu();
+        snprintf(name, sizeof(name), "settings-%u", (unsigned)i + 1u);
+        save(name);
+    }
+    ui.settings_row = SETTINGS_ROW_RESET;
+    ui.reset_confirm = 1;
+    draw_settings_menu(); draw_settings_reset_overlay(); save("settings-reset-confirm");
+    ui.reset_confirm = 0;
+    ui.settings_row = SETTINGS_BOOT_EXPORT_ROW;
+    ui.boot_export_state = BOOT_EXPORT_UI_SAVING; ui.boot_export_percent = 62;
+    draw_settings_menu(); draw_boot_export_overlay(); save("settings-export-progress");
+    ui.boot_export_state = BOOT_EXPORT_UI_NONE;
     ui.overlay = UI_OVERLAY_NONE;
     return 0;
 }

@@ -17,6 +17,11 @@ const CUSTOM = {
                     '<circle cx="12" cy="15.5" r="2.5"/>'),
   scope: svg24('<rect x="2" y="4" width="20" height="16" rx="2.5"/>' +
                '<path d="M5 12c1.5-4.5 3-4.5 4.5 0s3 4.5 4.5 0 3-4.5 4.5 0"/>'),
+  // The device's combined pause/play (OK) key, printed as ‖▶.
+  playpause: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 12 12">' +
+             '<rect x="0.5" y="2" width="2" height="8" rx="0.4" fill="#ffffff"/>' +
+             '<rect x="3.5" y="2" width="2" height="8" rx="0.4" fill="#ffffff"/>' +
+             '<path d="M7 2v8l4.8-4z" fill="#ffffff"/></svg>',
   generator: svg24('<path d="M2 16h3.5V8h6v8h6V8H21"/><path d="M2 20h20" opacity="0.45"/>'),
 };
 
@@ -41,6 +46,18 @@ const ICONS = [
   ['settings_md', 'settings', 26, 2.0],
   ['chevron_l_sm', 'chevron-left', 11, 2.6],
   ['chevron_r_sm', 'chevron-right', 11, 2.6],
+  ['playpause_sm', 'playpause', 12, 0],
+  ['move_sm', 'move', 11, 2.4],
+  ['beep_md', 'volume-2', 16, 2.2],
+  ['display_md', 'sun', 16, 2.2],
+  ['start_md', 'power', 16, 2.2],
+  ['sleep_md', 'moon', 16, 2.2],
+  ['export_md', 'hard-drive-download', 16, 2.2],
+  ['reset_md', 'rotate-ccw', 16, 2.2],
+  ['info_md', 'info', 16, 2.2],
+  ['storage_sm', 'hard-drive', 12, 2.2],
+  ['ok_md', 'circle-check', 20, 2.2],
+  ['error_md', 'circle-x', 20, 2.2],
 ];
 
 (async () => {

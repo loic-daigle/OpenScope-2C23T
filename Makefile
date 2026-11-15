@@ -113,9 +113,9 @@ $(BUILD_ROOT)/tests/bootloader_export-old $(BUILD_ROOT)/tests/bootloader_export-
 	@mkdir -p $(dir $@)
 	$(CLANG) $(HOST_TEST_FLAGS) -DHW_TARGET_HW40=$(if $(filter %-hw4,$@),1,0) -DAPP_BASE_ADDR=$(if $(filter %-hw4,$@),0x08007000u,0x08008000u) $< $(HOST_TEST_LINK) -o $@
 
-$(BUILD_ROOT)/tests/generator-old $(BUILD_ROOT)/tests/generator-hw4: tests/generator.c src/ui.c src/siggen.c src/siggen.h src/fft.c src/settings.h src/fpga.h
+$(BUILD_ROOT)/tests/generator-old $(BUILD_ROOT)/tests/generator-hw4: tests/generator.c src/ui.c src/siggen.c src/siggen.h src/fft.c src/settings.h src/fpga.h src/gfx.c src/ui_fonts.c
 	@mkdir -p $(dir $@)
-	$(CLANG) $(HOST_TEST_FLAGS) -DHW_TARGET_HW40=$(if $(filter %-hw4,$@),1,0) $< src/siggen.c src/fft.c $(HOST_TEST_LINK) -o $@
+	$(CLANG) $(HOST_TEST_FLAGS) -DHW_TARGET_HW40=$(if $(filter %-hw4,$@),1,0) $< src/siggen.c src/fft.c src/gfx.c src/ui_fonts.c $(HOST_TEST_LINK) -o $@
 
 $(BUILD_ROOT)/tests/fpga_timing-old $(BUILD_ROOT)/tests/fpga_timing-hw4: tests/fpga_timing.c src/fpga.c src/fpga.h src/hw.h
 	@mkdir -p $(dir $@)

@@ -537,9 +537,6 @@ static const uint16_t C_CH2 = RGB565(0, 242, 254);
 static const uint16_t C_DMM = RGB565(52, 211, 153);
 static const uint16_t C_SCOPE = RGB565(56, 189, 248);
 static const uint16_t C_GEN = RGB565(192, 132, 252);
-static const uint16_t C_MENU_SCOPE = RGB565(56, 189, 248);
-static const uint16_t C_MENU_GEN = RGB565(192, 132, 252);
-static const uint16_t C_MENU_SETTINGS = RGB565(251, 146, 60);
 static const uint16_t C_BATT = RGB565(52, 211, 153);
 static const uint16_t C_BATT_FULL = RGB565(52, 211, 153);
 
@@ -724,9 +721,6 @@ static const char *const gen_param_labels[] = {"WAVE", "FREQ", "DUTY", "AMP"};
 // own copy, which is how "KHZ" survived in some of them long after the
 // rest of the screen had learned to spell it.
 static const char *const freq_unit_labels[] = {"Hz", "kHz", "MHz"};
-static const char *const settings_row_labels[] = {
-    "BEEP", "DISPLAY", "START", "SLEEP", "BOOTLOADER", "RESET", "INFO",
-};
 static const char *const startup_labels[] = {"MENU", "DMM", "SCOPE", "GEN"};
 static const char *const beep_level_labels[] = {"OFF", "LOW", "MEDIUM", "HIGH", "MAX"};
 static const char *const brightness_level_labels[] = {"DIM", "LOW", "MEDIUM", "HIGH", "BRIGHT"};
@@ -1214,96 +1208,9 @@ static const char *fw_update_status_text(const fw_update_status_t *status) {
     return "";
 }
 
-static void draw_fw_update_overlay(uint16_t bg) {
-    fw_update_status_t status;
-    char bytes[11];
-    char line[32];
-    uint16_t x = 36;
-    uint16_t y = 82;
-    uint16_t w = 248;
-    uint16_t h = 72;
-    uint16_t box_bg;
-    uint16_t box_fg;
-
-    fw_update_status(&status);
-    if (status.state == FW_UPDATE_STATE_IDLE) {
-        return;
-    }
-
-    box_bg = status.state == FW_UPDATE_STATE_ERROR ? RGB565(64, 24, 28) : C_TEXT;
-    box_fg = status.state == FW_UPDATE_STATE_ERROR ? C_TEXT : C_BG;
-    lcd_rect(x, y, w, h, box_bg);
-    lcd_frame(x, y, w, h, status.state == FW_UPDATE_STATE_ERROR ? C_WARN : C_PANEL_2);
-    lcd_text_center(x, (uint16_t)(y + 9u), w, "FIRMWARE UPDATE", box_fg, box_bg, 2);
-    lcd_text_center(x, (uint16_t)(y + 34u), w, fw_update_status_text(&status), box_fg, box_bg, 1);
-
-    scope_format_u32(bytes, status.bytes / 1024u);
-    line[0] = 0;
-    ui_text_append(line, bytes, sizeof(line));
-    ui_text_append(line, " KB", sizeof(line));
-    lcd_text_center(x, (uint16_t)(y + 50u), w, line, box_fg, box_bg, 1);
-
-    (void)bg;
-}
-
-static void draw_screenshot_overlay(uint16_t bg) {
-    uint16_t x = 46;
-    uint16_t y = 86;
-    uint16_t w = 228;
-    uint16_t h = 66;
-    uint16_t box_bg;
-    uint16_t box_fg;
-    uint16_t accent;
-
-    if (!ui.screenshot_overlay_ms) {
-        return;
-    }
-
-    if (ui.screenshot_state == SCREENSHOT_STATE_SAVING) {
-        box_bg = C_TEXT;
-        box_fg = C_BG;
-        accent = C_PANEL_2;
-    } else if (ui.screenshot_state == SCREENSHOT_STATE_OK) {
-        box_bg = C_TEXT;
-        box_fg = C_BG;
-        accent = C_DMM;
-    } else {
-        box_bg = RGB565(64, 24, 28);
-        box_fg = C_TEXT;
-        accent = C_WARN;
-    }
-    lcd_rect(x, y, w, h, box_bg);
-    lcd_frame(x, y, w, h, accent);
-    lcd_rect(x, y, w, 4, accent);
-    lcd_text_center(x, (uint16_t)(y + 12u), w, "SCREENSHOT", box_fg, box_bg, 2);
-    if (ui.screenshot_state == SCREENSHOT_STATE_SAVING) {
-        lcd_text_center(x, (uint16_t)(y + 38u), w, "SAVING TO USB", box_fg, box_bg, 1);
-    } else if (ui.screenshot_state == SCREENSHOT_STATE_OK) {
-        lcd_text_center(x, (uint16_t)(y + 38u), w, "SAVED TO USB", box_fg, box_bg, 1);
-    } else {
-        // Say which failure it was. A full drive is the only one the user
-        // can do anything about, so it gets the line that says what to do.
-        const char *reason = "SAVE ERROR";
-        const char *hint = 0;
-        if (ui.screenshot_reason == SCREENSHOT_SAVE_FULL) {
-            reason = "DRIVE FULL";
-            hint = "DELETE IMG FILES FROM THE PC";
-        } else if (ui.screenshot_reason == SCREENSHOT_SAVE_NO_SLOT) {
-            reason = "TOO MANY FILES";
-            hint = "DELETE IMG FILES FROM THE PC";
-        } else if (ui.screenshot_reason == SCREENSHOT_SAVE_BUSY) {
-            reason = "DRIVE BUSY";
-            hint = "THE PC IS READING IT - RETRY";
-        } else if (ui.screenshot_reason == SCREENSHOT_SAVE_NO_VOLUME) {
-            reason = "NO USB DRIVE";
-        }
-        lcd_text_center(x, (uint16_t)(y + 36u), w, reason, box_fg, box_bg, 1);
-        if (hint) {
-            lcd_text_center(x, (uint16_t)(y + 50u), w, hint, box_fg, box_bg, 1);
-        }
-    }
-    (void)bg;
-}
+// Redrawn as rounded dialogs further down, next to the other modern UI.
+static void draw_fw_update_overlay(uint16_t bg);
+static void draw_screenshot_overlay(uint16_t bg);
 
 static void draw_mode_tabs(void) {
     uint16_t x = 10;
@@ -7266,18 +7173,6 @@ static void draw_generator_immersive(void) {
     ui_draw_gen_sweep_menu();
 }
 
-static uint16_t menu_item_color(uint8_t index) {
-    if (index == 1u) {
-        return C_MENU_SCOPE;
-    }
-    if (index == 2u) {
-        return C_MENU_GEN;
-    }
-    if (index == 3u) {
-        return C_MENU_SETTINGS;
-    }
-    return C_DMM;
-}
 
 // ---------------------------------------------------------------------------
 // Main menu: a 2x2 grid of tool cards in the multimeter screen's style.
@@ -7321,16 +7216,17 @@ static void draw_mode_menu_card(uint8_t index) {
 
     if (selected) {
         int16_t left;
-        dmm_draw_pill_icon((int16_t)(x + W - 10u), (uint16_t)(y + 11u), 0, "OK", card->tint, card->accent, bg, &left);
+        dmm_draw_pill_icon((int16_t)(x + W - 10u), (uint16_t)(y + 11u), ICON_PLAYPAUSE_SM, "Open", card->tint, card->accent, bg, &left);
     }
 
     gfx_text((int16_t)(x + 12u), (int16_t)(y + 48u), &font_medium, card->title, selected ? D_TEXT : D_SUB, bg);
     gfx_text((int16_t)(x + 12u), (int16_t)(y + 64u), &font_small, card->subtitle, D_MUTED, bg);
 }
 
+static void ui_draw_key_hints(uint16_t y, const char *move, const char *ok, const char *back);
+
 static void draw_mode_menu(void) {
     enum { HINT_Y = 216 };
-    int16_t x;
 
     lcd_rect(0, 0, LCD_WIDTH, LCD_HEIGHT, D_BG);
     ui_draw_status_bar("Menu", D_TEXT);
@@ -7338,19 +7234,7 @@ static void draw_mode_menu(void) {
         draw_mode_menu_card(i);
     }
 
-    // Key hint, centred: [<] [>] choose   OK open
-    {
-        uint16_t w = (uint16_t)(11u + 2u + 11u + 6u + gfx_text_width(&font_small, "choose") + 16u +
-                                gfx_text_width(&font_small, "OK") + 6u + 4u + gfx_text_width(&font_small, "open"));
-        x = (int16_t)((LCD_WIDTH - w) / 2u);
-        x = gfx_text(x, HINT_Y + 1, &font_icons, ICON_CHEVRON_L_SM, D_SUB, D_BG);
-        x = gfx_text((int16_t)(x + 2), HINT_Y + 1, &font_icons, ICON_CHEVRON_R_SM, D_SUB, D_BG);
-        x = gfx_text((int16_t)(x + 6), HINT_Y, &font_small, "choose", D_MUTED, D_BG);
-        x = (int16_t)(x + 16);
-        gfx_round_rect((uint16_t)x, HINT_Y - 1u, (uint16_t)(gfx_text_width(&font_small, "OK") + 8u), 15, 7, D_TRACK, D_BG);
-        x = gfx_text((int16_t)(x + 4), HINT_Y, &font_small, "OK", D_SUB, D_TRACK);
-        gfx_text((int16_t)(x + 10), HINT_Y, &font_small, "open", D_MUTED, D_BG);
-    }
+    ui_draw_key_hints(HINT_Y, "choose", "open", 0);
 }
 
 static const char *startup_label(void) {
@@ -7419,23 +7303,6 @@ static void settings_refresh_storage(void) {
     ui.storage_total_kb = total_kb;
 }
 
-static void settings_storage_text(char out[20]) {
-    char number[12];
-
-    if (!ui.storage_known || !ui.storage_total_kb) {
-        ui_text_copy(out, "STORAGE --", 20);
-        return;
-    }
-    ui_text_copy(out, "FREE ", 20);
-    // Megabytes with one decimal: the drive is 8 MB, so kilobytes would be
-    // five digits of noise and plain megabytes would read 0 when it counts.
-    scope_format_u32(number, ui.storage_free_kb / 1024u);
-    ui_text_append(out, number, 20);
-    ui_text_append(out, ".", 20);
-    scope_format_u32(number, ((ui.storage_free_kb % 1024u) * 10u) / 1024u);
-    ui_text_append(out, number, 20);
-    ui_text_append(out, " MB", 20);
-}
 
 enum {
     BOOT_EXPORT_UI_NONE,
@@ -7444,112 +7311,315 @@ enum {
     BOOT_EXPORT_UI_RESULT,
 };
 
-static void draw_boot_export_overlay(void) {
-    static const char *const errors[] = {
-        "SAVED AND VERIFIED", "STORAGE BUSY - RETRY", "BOOTLOADER READ PROTECTED",
-        "INVALID BOOTLOADER VECTORS", "STORAGE WRITE ERROR",
-        "NOT ENOUGH FREE SPACE", "BACKUP VERIFY ERROR",
-    };
-    char percent[12];
-    if (ui.overlay != UI_OVERLAY_SETTINGS || ui.boot_export_state == BOOT_EXPORT_UI_NONE) {
-        return;
-    }
-    uint8_t error = ui.boot_export_state == BOOT_EXPORT_UI_RESULT &&
-        ui.boot_export_result != BOOT_EXPORT_OK;
-    uint16_t bg = error ? RGB565(64, 24, 28) : C_TEXT;
-    uint16_t fg = error ? C_TEXT : C_BG;
-    lcd_rect(22, 66, 276, 110, bg);
-    lcd_frame(22, 66, 276, 110, error ? C_WARN : C_PANEL_2);
-    lcd_text_center(22, 80, 276, "BOOTLOADER EXPORT", fg, bg, 2);
-    if (ui.boot_export_state == BOOT_EXPORT_UI_CONFIRM) {
-        lcd_text_center(22, 112, 276, "EJECT USB DRIVE FIRST", fg, bg, 1);
-        lcd_text_center(22, 126, 276, "REPLACES EXISTING BACKUP", fg, bg, 1);
-        lcd_text_center(22, 140, 276, "PLAY: EXPORT   MENU: CANCEL", fg, bg, 1);
-    } else if (ui.boot_export_state == BOOT_EXPORT_UI_SAVING) {
-        scope_format_u32(percent, ui.boot_export_percent);
-        ui_text_append(percent, "%", sizeof(percent));
-        lcd_text_center(22, 114, 276, percent, fg, bg, 2);
-        lcd_text_center(22, 145, 276, "READING AND VERIFYING", fg, bg, 1);
+// ---------------------------------------------------------------------------
+// Key hints and dialogs shared by the menu, settings and pop-ups.
+// ---------------------------------------------------------------------------
+
+static const uint16_t D_SETTINGS = RGB565(255, 181, 71);
+static const uint16_t D_SETTINGS_TINT = RGB565(66, 48, 20);
+static const uint16_t D_RED_TINT = RGB565(74, 24, 32);
+
+// A key cap: a small rounded chip holding an icon or a word.
+static int16_t ui_draw_keycap(int16_t x, int16_t y, const char *icon, const char *word, uint16_t under) {
+    uint16_t inner = icon ? gfx_text_width(&font_icons, icon) : gfx_text_width(&font_small, word);
+    uint16_t w = (uint16_t)(inner + 10u);
+    gfx_round_rect((uint16_t)x, (uint16_t)y, w, 15, 5, D_TRACK, under);
+    if (icon) {
+        gfx_text((int16_t)(x + 5), (int16_t)(y + 2), &font_icons, icon, D_TEXT, D_TRACK);
     } else {
-        uint8_t result = ui.boot_export_result;
-        lcd_text_center(22, 115, 276,
-                        errors[result <= BOOT_EXPORT_VERIFY_ERROR ? result : BOOT_EXPORT_STORAGE_ERROR],
-                        fg, bg, 1);
-        if (!error) {
-            lcd_text_center(22, 143, 276, BOOTLOADER_FILE_NAME, fg, bg, 1);
+        gfx_text((int16_t)(x + 5), (int16_t)(y + 1), &font_small, word, D_TEXT, D_TRACK);
+    }
+    return (int16_t)(x + (int16_t)w);
+}
+
+static uint16_t ui_key_hints_width(const char *move, const char *ok, const char *back) {
+    uint16_t w = (uint16_t)(gfx_text_width(&font_icons, ICON_MOVE_SM) + 10u + 5u + gfx_text_width(&font_small, move) +
+                            14u + gfx_text_width(&font_icons, ICON_PLAYPAUSE_SM) + 10u + 5u +
+                            gfx_text_width(&font_small, ok));
+    if (back) {
+        w = (uint16_t)(w + 14u + gfx_text_width(&font_small, "MENU") + 10u + 5u + gfx_text_width(&font_small, back));
+    }
+    return w;
+}
+
+// [arrows] move   [‖▶] ok   [MENU] back -- centred on the screen.
+static void ui_draw_key_hints(uint16_t y, const char *move, const char *ok, const char *back) {
+    int16_t x = (int16_t)((LCD_WIDTH - ui_key_hints_width(move, ok, back)) / 2u);
+    x = ui_draw_keycap(x, (int16_t)y, ICON_MOVE_SM, 0, D_BG);
+    x = gfx_text((int16_t)(x + 5), (int16_t)(y + 1), &font_small, move, D_MUTED, D_BG);
+    x = ui_draw_keycap((int16_t)(x + 14), (int16_t)y, ICON_PLAYPAUSE_SM, 0, D_BG);
+    x = gfx_text((int16_t)(x + 5), (int16_t)(y + 1), &font_small, ok, D_MUTED, D_BG);
+    if (back) {
+        x = ui_draw_keycap((int16_t)(x + 14), (int16_t)y, 0, "MENU", D_BG);
+        gfx_text((int16_t)(x + 5), (int16_t)(y + 1), &font_small, back, D_MUTED, D_BG);
+    }
+}
+
+enum {
+    MODAL_X = 24,
+    MODAL_Y = 60,
+    MODAL_W = 272,
+    MODAL_H = 120,
+};
+
+// A rounded dialog: icon + title, up to two lines, an optional progress bar
+// and an optional "‖▶ confirm / MENU cancel" row.
+static void ui_draw_modal(const char *icon, uint16_t tone, uint16_t tint,
+                          const char *title, const char *line1, const char *line2,
+                          int16_t progress, const char *confirm, const char *cancel) {
+    enum { X = MODAL_X, Y = MODAL_Y, W = MODAL_W, H = MODAL_H };
+
+    gfx_round_rect(X - 4u, Y - 4u, W + 8u, H + 8u, 20, D_BG, D_BG);
+    gfx_round_rect(X, Y, W, H, 16, tone, D_BG);
+    gfx_round_rect(X + 2u, Y + 2u, W - 4u, H - 4u, 14, D_CARD, tone);
+
+    gfx_round_rect(X + 14u, Y + 14u, 30, 30, 9, tint, D_CARD);
+    gfx_text((int16_t)(X + 14 + (30 - (int16_t)gfx_text_width(&font_icons, icon)) / 2),
+             (int16_t)(Y + 14 + (30 - (int16_t)gfx_text_width(&font_icons, icon)) / 2),
+             &font_icons, icon, tone, tint);
+    gfx_text(X + 54, Y + 20, &font_medium, title, D_TEXT, D_CARD);
+
+    if (line1) {
+        gfx_text(X + 16, Y + 54, &font_small, line1, D_SUB, D_CARD);
+    }
+    if (line2) {
+        gfx_text(X + 16, Y + 69, &font_small, line2, D_MUTED, D_CARD);
+    }
+    if (progress >= 0) {
+        uint16_t len = (uint16_t)((uint32_t)(progress > 100 ? 100 : progress) * (W - 32u) / 100u);
+        gfx_round_rect(X + 16u, Y + 90u, W - 32u, 6, 3, D_TRACK, D_CARD);
+        if (len) {
+            gfx_round_rect(X + 16u, Y + 90u, len, 6, len < 6u ? 0u : 3u, tone, D_TRACK);
+        }
+    }
+    if (confirm) {
+        int16_t x = X + 16;
+        x = ui_draw_keycap(x, Y + 92, ICON_PLAYPAUSE_SM, 0, D_CARD);
+        x = gfx_text((int16_t)(x + 5), Y + 93, &font_small, confirm, D_SUB, D_CARD);
+        if (cancel) {
+            x = ui_draw_keycap((int16_t)(x + 14), Y + 92, 0, "MENU", D_CARD);
+            gfx_text((int16_t)(x + 5), Y + 93, &font_small, cancel, D_SUB, D_CARD);
         }
     }
 }
 
-static void draw_settings_reset_overlay(void) {
-    uint16_t bg = RGB565(64, 24, 28);
+static void draw_fw_update_overlay(uint16_t bg) {
+    fw_update_status_t status;
+    char line[32];
+    char bytes[11];
+    uint8_t error;
 
+    (void)bg;
+    fw_update_status(&status);
+    if (status.state == FW_UPDATE_STATE_IDLE) {
+        return;
+    }
+    error = status.state == FW_UPDATE_STATE_ERROR;
+    scope_format_u32(bytes, status.bytes / 1024u);
+    ui_text_copy(line, bytes, sizeof(line));
+    ui_text_append(line, " KB received", sizeof(line));
+    ui_draw_modal(error ? ICON_ERROR_MD : ICON_EXPORT_MD,
+                  error ? D_RED : D_ACCENT, error ? D_RED_TINT : D_ACCENT_TINT,
+                  "Firmware update", fw_update_status_text(&status), line, -1, 0, 0);
+}
+
+static void draw_screenshot_overlay(uint16_t bg) {
+    const char *line1 = "Saving to USB drive";
+    const char *line2 = 0;
+    const char *icon = ICON_EXPORT_MD;
+    uint16_t tone = D_ACCENT;
+    uint16_t tint = D_ACCENT_TINT;
+
+    (void)bg;
+    if (!ui.screenshot_overlay_ms) {
+        return;
+    }
+    if (ui.screenshot_state == SCREENSHOT_STATE_OK) {
+        line1 = "Saved to USB drive";
+        icon = ICON_OK_MD;
+        tone = D_GREEN;
+        tint = D_GREEN_TINT;
+    } else if (ui.screenshot_state != SCREENSHOT_STATE_SAVING) {
+        icon = ICON_ERROR_MD;
+        tone = D_RED;
+        tint = D_RED_TINT;
+        line1 = "Save error";
+        if (ui.screenshot_reason == SCREENSHOT_SAVE_FULL) {
+            line1 = "Drive full";
+            line2 = "Delete IMG files from the PC";
+        } else if (ui.screenshot_reason == SCREENSHOT_SAVE_NO_SLOT) {
+            line1 = "Too many files";
+            line2 = "Delete IMG files from the PC";
+        } else if (ui.screenshot_reason == SCREENSHOT_SAVE_BUSY) {
+            line1 = "Drive busy";
+            line2 = "The PC is reading it - try again";
+        } else if (ui.screenshot_reason == SCREENSHOT_SAVE_NO_VOLUME) {
+            line1 = "No USB drive";
+        }
+    }
+    ui_draw_modal(icon, tone, tint, "Screenshot", line1, line2, -1, 0, 0);
+}
+
+static void draw_boot_export_overlay(void) {
+    static const char *const errors[] = {
+        "Saved and verified", "Storage busy - try again", "Bootloader is read-protected",
+        "Invalid bootloader vectors", "Storage write error",
+        "Not enough free space", "Backup verify error",
+    };
+    if (ui.overlay != UI_OVERLAY_SETTINGS || ui.boot_export_state == BOOT_EXPORT_UI_NONE) {
+        return;
+    }
+    if (ui.boot_export_state == BOOT_EXPORT_UI_CONFIRM) {
+        ui_draw_modal(ICON_EXPORT_MD, D_SETTINGS, D_SETTINGS_TINT, "Export bootloader",
+                      "Eject the USB drive on the PC first.", "Replaces any existing backup.",
+                      -1, "Export", "Cancel");
+    } else if (ui.boot_export_state == BOOT_EXPORT_UI_SAVING) {
+        char line[40];
+        scope_format_u32(line, ui.boot_export_percent);
+        ui_text_append(line, "% - reading and verifying", sizeof(line));
+        ui_draw_modal(ICON_EXPORT_MD, D_SETTINGS, D_SETTINGS_TINT, "Export bootloader",
+                      line, 0, ui.boot_export_percent, 0, 0);
+    } else {
+        uint8_t result = ui.boot_export_result;
+        uint8_t error = result != BOOT_EXPORT_OK;
+        ui_draw_modal(error ? ICON_ERROR_MD : ICON_OK_MD, error ? D_RED : D_GREEN, error ? D_RED_TINT : D_GREEN_TINT,
+                      "Export bootloader",
+                      errors[result <= BOOT_EXPORT_VERIFY_ERROR ? result : BOOT_EXPORT_STORAGE_ERROR],
+                      error ? 0 : BOOTLOADER_FILE_NAME, -1, 0, 0);
+    }
+}
+
+static void draw_settings_reset_overlay(void) {
     if (ui.overlay != UI_OVERLAY_SETTINGS || !ui.reset_confirm) {
         return;
     }
-    lcd_rect(22, 66, 276, 110, bg);
-    lcd_frame(22, 66, 276, 110, C_WARN);
-    lcd_text_center(22, 80, 276, "FACTORY RESET", C_TEXT, bg, 2);
-    lcd_text_center(22, 112, 276, "ALL SETTINGS AND CALIBRATION", C_TEXT, bg, 1);
-    lcd_text_center(22, 126, 276, "WILL BE LOST - CAPTURES ARE KEPT", C_TEXT, bg, 1);
-    lcd_text_center(22, 146, 276, "PLAY: RESET   MENU: CANCEL", C_TEXT, bg, 1);
+    ui_draw_modal(ICON_RESET_MD, D_RED, D_RED_TINT, "Factory reset",
+                  "All settings and calibration will be lost.", "Screenshots and captures are kept.",
+                  -1, "Reset", "Cancel");
+}
+
+// ---------------------------------------------------------------------------
+// Settings page: 3x2 tiles plus a wide info card, same navigation as before.
+// ---------------------------------------------------------------------------
+
+static const char *const settings_tile_labels[] = {
+    "Beep", "Display", "Start", "Sleep", "Bootloader", "Reset",
+};
+static const char *const settings_tile_icons[] = {
+    ICON_BEEP_MD, ICON_DISPLAY_MD, ICON_START_MD, ICON_SLEEP_MD, ICON_EXPORT_MD, ICON_RESET_MD,
+};
+
+// Sentence case for the upper-case setting values: "MEDIUM" -> "Medium".
+static void settings_display_value(uint8_t row, char out[16]) {
+    char scratch[12];
+    const char *raw;
+
+    if (row == 2u) {
+        static const char *const starts[] = {"Menu", "Multimeter", "Scope", "Generator"};
+        const char *label = startup_label();
+        for (uint8_t i = 0; i < 4u; ++i) {
+            if (ui_text_equal(label, startup_labels[i])) {
+                ui_text_copy(out, starts[i], 16);
+                return;
+            }
+        }
+    }
+    if (row == SETTINGS_BOOT_EXPORT_ROW) {
+        ui_text_copy(out, "Export", 16);
+        return;
+    }
+    if (row == SETTINGS_ROW_RESET) {
+        ui_text_copy(out, "Factory", 16);
+        return;
+    }
+    raw = settings_value_text(row, scratch);
+    ui_text_copy(out, raw, 16);
+    for (uint8_t i = 1; out[i]; ++i) {
+        if (out[i] >= 'A' && out[i] <= 'Z') {
+            out[i] = (char)(out[i] + 32);
+        }
+    }
 }
 
 static void draw_settings_tile(uint8_t row, uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
-    char value[12];
-    uint8_t selectable = row < SETTINGS_SELECTABLE_COUNT;
-    uint8_t selected = selectable && ui.settings_row == row;
-    uint16_t accent = selectable ? menu_item_color(3) : C_GRID;
-    uint16_t bg = selected ? C_PANEL_2 : C_PANEL;
-    uint16_t label_color = selectable ? (selected ? C_TEXT : C_MUTED) : C_GRID;
-    uint16_t value_color = selectable ? (selected ? accent : C_TEXT) : C_MUTED;
-    const char *value_text = settings_value_text(row, value);
-    uint8_t value_scale = (row == 2u || lcd_text_width(value_text, 2) <= (uint16_t)(w - 10u)) ? 2u : 1u;
-    uint16_t value_y = (uint16_t)(y + (value_scale == 2u ? 28u : 34u));
+    char value[16];
+    uint8_t selected = ui.settings_row == row;
+    uint8_t danger = row == SETTINGS_ROW_RESET;
+    uint16_t accent = danger ? D_RED : D_SETTINGS;
+    uint16_t tint = danger ? D_RED_TINT : D_SETTINGS_TINT;
+    uint16_t bg = selected ? RGB565(30, 37, 48) : D_CARD;
 
-    lcd_rect(x, y, w, h, bg);
-    lcd_frame(x, y, w, h, selected ? accent : C_GRID);
-    lcd_rect(x, y, w, 4, accent);
-    lcd_text((uint16_t)(x + 8u), (uint16_t)(y + 8u), settings_row_labels[row], label_color, bg, 1);
-    if (row == SETTINGS_ROW_INFO) {
-        // The wide tile has room for what the small ones never did: the
-        // firmware version, the hardware revision that says which binary
-        // belongs on this unit, and how much of the drive is left.
-        char storage[20];
-        settings_storage_text(storage);
-        // Laid out left to right rather than centred: a centred revision
-        // would run into a version string one character longer.
-        lcd_text((uint16_t)(x + 8u), (uint16_t)(y + 22u), FIRMWARE_VERSION_TEXT, C_TEXT, bg, 2);
-        lcd_text((uint16_t)(x + 150u), (uint16_t)(y + 22u), hardware_revision_text(),
-                 menu_item_color(3), bg, 2);
-        lcd_text((uint16_t)(x + w - 8u - lcd_text_width(storage, 1)),
-                 (uint16_t)(y + 26u), storage, C_MUTED, bg, 1);
-        return;
-    }
-    lcd_text_center(x, value_y, w, value_text, value_color, bg, value_scale);
     if (selected) {
-        lcd_rect((uint16_t)(x + 10u), (uint16_t)(y + h - 7u), (uint16_t)(w - 20u), 3, accent);
+        gfx_round_rect(x, y, w, h, 12, accent, D_BG);
+        gfx_round_rect((uint16_t)(x + 2u), (uint16_t)(y + 2u), (uint16_t)(w - 4u), (uint16_t)(h - 4u), 10, bg, accent);
+    } else {
+        gfx_round_rect(x, y, w, h, 12, bg, D_BG);
+    }
+    gfx_round_rect((uint16_t)(x + 9u), (uint16_t)(y + 9u), 24, 24, 7, selected ? accent : tint, bg);
+    gfx_text((int16_t)(x + 13u), (int16_t)(y + 13u), &font_icons, settings_tile_icons[row],
+             selected ? D_BG : accent, selected ? accent : tint);
+    gfx_text((int16_t)(x + 39u), (int16_t)(y + 14u), &font_small, settings_tile_labels[row], D_MUTED, bg);
+
+    settings_display_value(row, value);
+    gfx_text((int16_t)(x + 10u), (int16_t)(y + 35u), &font_medium, value, selected ? accent : D_TEXT, bg);
+
+    // Level rows get a five-step meter beside the value.
+    if (row == 0u || row == 1u) {
+        uint8_t level = row == 0u ? ui_settings.beep_level : (uint8_t)(ui_settings.brightness_level + 1u);
+        for (uint8_t i = 0; i < 5u; ++i) {
+            uint16_t bx = (uint16_t)(x + w - 12u - (4u - i) * 6u - 4u);
+            uint16_t bh = (uint16_t)(4u + i * 2u);
+            gfx_round_rect(bx, (uint16_t)(y + 48u - bh), 4, bh, 1, i < level ? accent : D_TRACK, bg);
+        }
     }
 }
 
-static void draw_settings_menu(void) {
-    lcd_rect(0, 0, LCD_WIDTH, LCD_HEIGHT, C_BG);
-    draw_battery_status_overlay(C_BG);
+static void draw_settings_info(uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
+    char storage[20];
+    int16_t right;
+    int16_t tx;
 
-    lcd_text(14, 18, "SETTINGS", C_TEXT, C_BG, 3);
-    // Two lines of three tiles, then INFO across the full width. The tiles
-    // lost eight pixels of height to make room for the third line; the
-    // label, the value and the selection bar all still fit.
+    gfx_round_rect(x, y, w, h, 12, D_CARD, D_BG);
+    gfx_round_rect((uint16_t)(x + 9u), (uint16_t)(y + (h - 24u) / 2u), 24, 24, 7, D_TRACK, D_CARD);
+    gfx_text((int16_t)(x + 13u), (int16_t)(y + (h - 24u) / 2u + 4u), &font_icons, ICON_INFO_MD, D_SUB, D_TRACK);
+    gfx_text((int16_t)(x + 42u), (int16_t)(y + 8u), &font_small, "Firmware", D_MUTED, D_CARD);
+    tx = gfx_text((int16_t)(x + 42u), (int16_t)(y + 21u), &font_medium, FIRMWARE_VERSION_TEXT, D_TEXT, D_CARD);
+    {
+        int16_t left;
+        uint16_t pw = (uint16_t)(gfx_text_width(&font_small, hardware_revision_text()) + 12u);
+        dmm_draw_pill((int16_t)(tx + 8 + (int16_t)pw), (uint16_t)(y + 22u), hardware_revision_text(),
+                      D_SETTINGS_TINT, D_SETTINGS, D_CARD, &left);
+    }
+
+    if (!ui.storage_known || !ui.storage_total_kb) {
+        ui_text_copy(storage, "Storage --", sizeof(storage));
+    } else {
+        char number[12];
+        scope_format_u32(number, ui.storage_free_kb / 1024u);
+        ui_text_copy(storage, number, sizeof(storage));
+        ui_text_append(storage, ".", sizeof(storage));
+        scope_format_u32(number, ((ui.storage_free_kb % 1024u) * 10u) / 1024u);
+        ui_text_append(storage, number, sizeof(storage));
+        ui_text_append(storage, " MB free", sizeof(storage));
+    }
+    right = (int16_t)(x + w - 12u);
+    gfx_text_right(right, (int16_t)(y + 21u), &font_small, storage, D_SUB, D_CARD);
+    gfx_text((int16_t)(right - (int16_t)gfx_text_width(&font_small, storage) - 16), (int16_t)(y + 20u),
+             &font_icons, ICON_STORAGE_SM, D_MUTED, D_CARD);
+    gfx_text_right(right, (int16_t)(y + 8u), &font_small, "USB drive", D_MUTED, D_CARD);
+}
+
+static void draw_settings_menu(void) {
+    lcd_rect(0, 0, LCD_WIDTH, LCD_HEIGHT, D_BG);
+    ui_draw_status_bar("Settings", D_SETTINGS);
     for (uint8_t row = 0; row < SETTINGS_ROW_INFO; ++row) {
         uint8_t col = (uint8_t)(row % SETTINGS_GRID_COLUMNS);
         uint8_t line = (uint8_t)(row / SETTINGS_GRID_COLUMNS);
-        draw_settings_tile(row,
-                           (uint16_t)(8u + col * 105u),
-                           (uint16_t)(64u + line * 58u),
-                           98,
-                           52);
+        draw_settings_tile(row, (uint16_t)(8u + col * 103u), (uint16_t)(28u + line * 60u), 98, 54);
     }
-    draw_settings_tile(SETTINGS_ROW_INFO, 8, 180, 303, 48);
+    draw_settings_info(8, 148, 304, 50);
+    ui_draw_key_hints(214, "move",
+                      ui.settings_row >= SETTINGS_BOOT_EXPORT_ROW ? "open" : "change", "back");
 }
 
 typedef enum {
@@ -7655,6 +7725,8 @@ static void ui_draw_dmm_reading_scene(void) {
 static void ui_draw_battery_status_scene(void) {
     if (ui.overlay == UI_OVERLAY_MODE_MENU) {
         ui_draw_status_bar("Menu", D_TEXT);
+    } else if (ui.overlay == UI_OVERLAY_SETTINGS) {
+        ui_draw_status_bar("Settings", D_SETTINGS);
     } else if (ui.mode == UI_MODE_DMM && ui.overlay == UI_OVERLAY_NONE) {
         dmm_draw_status_bar();
     } else if (ui.chrome_visible) {
@@ -10100,6 +10172,12 @@ static void ui_handle_menu_keys(uint32_t events) {
         }
         if (events & KEY_LEFT) {
             cycle_u8(&ui.menu_index, 4, -1);
+            ui_render();
+            return;
+        }
+        if (events & (KEY_UP | KEY_DOWN)) {
+            // Two rows of two: up and down swap rows in the same column.
+            ui.menu_index = (uint8_t)((ui.menu_index & 3u) ^ 2u);
             ui_render();
             return;
         }
