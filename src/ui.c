@@ -3957,51 +3957,8 @@ static void ui_draw_status_bar(const char *title, uint16_t dot) {
     }
 }
 
-#ifndef DMM_DIAG
-#define DMM_DIAG 0
-#endif
-
-#if DMM_DIAG
-// Diagnostic build: frames per second from the meter chip and how many of
-// them the firmware accepted, refreshed once a second in the status bar.
-static uint8_t dmm_diag_rate_frames;
-static uint8_t dmm_diag_rate_accepted;
-static uint16_t dmm_diag_window_ms;
-static uint16_t dmm_diag_last_frames;
-static uint16_t dmm_diag_last_accepted;
-
-static uint8_t dmm_diag_tick(uint32_t elapsed_ms) {
-    uint16_t frames;
-    uint16_t accepted;
-    dmm_diag_window_ms = (uint16_t)(dmm_diag_window_ms + elapsed_ms);
-    if (dmm_diag_window_ms < 1000u) {
-        return 0;
-    }
-    dmm_diag_window_ms = 0;
-    dmm_diag_counters(&frames, &accepted);
-    dmm_diag_rate_frames = (uint8_t)(frames - dmm_diag_last_frames);
-    dmm_diag_rate_accepted = (uint8_t)(accepted - dmm_diag_last_accepted);
-    dmm_diag_last_frames = frames;
-    dmm_diag_last_accepted = accepted;
-    return 1;
-}
-#endif
-
 static void dmm_draw_status_bar(void) {
     ui_draw_status_bar("Multimeter", D_ACCENT);
-#if DMM_DIAG
-    {
-        char text[24];
-        char n[6];
-        scope_format_u32(n, dmm_diag_rate_frames);
-        ui_text_copy(text, n, sizeof(text));
-        ui_text_append(text, " fps, ", sizeof(text));
-        scope_format_u32(n, dmm_diag_rate_accepted);
-        ui_text_append(text, n, sizeof(text));
-        ui_text_append(text, " ok", sizeof(text));
-        gfx_text(100, 5, &font_small, text, D_AMBER, D_BG);
-    }
-#endif
 }
 
 static uint8_t dmm_auto_range_display(void) {
@@ -4234,30 +4191,7 @@ static void dmm_draw_state_card(uint16_t card, uint16_t sub, uint16_t accent, ui
     }
 
     lcd_rect(DMM_IN_X, DMM_CARD_Y + DMM_TALL_H - 25u, DMM_IN_W, 1, line);
-#if DMM_DIAG
-    {
-        // Raw meter frame bytes 2-8 and the parse result (0 = accepted).
-        static const char hex[] = "0123456789ABCDEF";
-        uint8_t raw[9];
-        uint8_t status;
-        char text[32];
-        uint8_t n = 0;
-        dmm_diag_last_frame(raw, &status);
-        for (uint8_t i = 2; i < 9u; ++i) {
-            text[n++] = hex[raw[i] >> 4];
-            text[n++] = hex[raw[i] & 15u];
-            text[n++] = ' ';
-        }
-        text[n++] = 's';
-        text[n++] = (char)('0' + status);
-        text[n] = 0;
-        gfx_text(DMM_IN_X, DMM_CARD_Y + DMM_TALL_H - 19, &font_small, text, D_AMBER, card);
-        footer_right = 0;
-        (void)footer_left;
-    }
-#else
     gfx_text(DMM_IN_X, DMM_CARD_Y + DMM_TALL_H - 19, &font_small, footer_left, sub, card);
-#endif
     if (footer_right) {
         gfx_text_right(DMM_IN_X + DMM_IN_W, DMM_CARD_Y + DMM_TALL_H - 19, &font_small, footer_right, sub, card);
     }
@@ -11110,11 +11044,6 @@ static void scope_stream_telemetry(uint32_t elapsed_ms) {
 void ui_tick(uint32_t elapsed_ms) {
     uint8_t rendered = 0;
 
-#if DMM_DIAG
-    if (dmm_diag_tick(elapsed_ms) && ui.mode == UI_MODE_DMM && ui.overlay == UI_OVERLAY_NONE) {
-        ui_redraw_battery_status();
-    }
-#endif
 
     if (keys_injected) {
         uint32_t events = keys_injected;
