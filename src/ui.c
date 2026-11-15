@@ -4234,7 +4234,30 @@ static void dmm_draw_state_card(uint16_t card, uint16_t sub, uint16_t accent, ui
     }
 
     lcd_rect(DMM_IN_X, DMM_CARD_Y + DMM_TALL_H - 25u, DMM_IN_W, 1, line);
+#if DMM_DIAG
+    {
+        // Raw meter frame bytes 2-8 and the parse result (0 = accepted).
+        static const char hex[] = "0123456789ABCDEF";
+        uint8_t raw[9];
+        uint8_t status;
+        char text[32];
+        uint8_t n = 0;
+        dmm_diag_last_frame(raw, &status);
+        for (uint8_t i = 2; i < 9u; ++i) {
+            text[n++] = hex[raw[i] >> 4];
+            text[n++] = hex[raw[i] & 15u];
+            text[n++] = ' ';
+        }
+        text[n++] = 's';
+        text[n++] = (char)('0' + status);
+        text[n] = 0;
+        gfx_text(DMM_IN_X, DMM_CARD_Y + DMM_TALL_H - 19, &font_small, text, D_AMBER, card);
+        footer_right = 0;
+        (void)footer_left;
+    }
+#else
     gfx_text(DMM_IN_X, DMM_CARD_Y + DMM_TALL_H - 19, &font_small, footer_left, sub, card);
+#endif
     if (footer_right) {
         gfx_text_right(DMM_IN_X + DMM_IN_W, DMM_CARD_Y + DMM_TALL_H - 19, &font_small, footer_right, sub, card);
     }
@@ -4247,13 +4270,13 @@ static void draw_dmm_immersive_panel(void) {
         if (dmm_live_wire_detected()) {
             dmm_draw_state_card(D_RED_CARD, D_RED_SUB, D_RED, D_RED_LINE, D_RED, D_BG, 1,
                                 ICON_ALERT_SM, "DETECTED", D_RED, D_BG, "Live wire", D_TEXT,
-                                "AC mains sensed near probe", 0,
-                                "Non-contact check: confirm with a reading", 0);
+                                "Mains phase on the red probe", 0,
+                                "Phase check only: confirm with a voltage reading", 0);
         } else {
             dmm_draw_state_card(D_CARD, D_SUB, D_ACCENT, D_TRACK, D_TRACK, D_MUTED, 1,
                                 0, "SCANNING", D_ACCENT_TINT, D_ACCENT, "No live wire", D_SUB,
-                                "Hold the probe near a conductor", 0,
-                                "Beeps when mains voltage is sensed", 0);
+                                "Touch the red probe to the wire", 0,
+                                "Red lead in the V jack; beeps on a live phase", 0);
         }
         return;
     }

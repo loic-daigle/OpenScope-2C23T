@@ -655,6 +655,18 @@ static uint8_t format_value(const uint8_t frame[DMM_FRAME_LEN], const char *unit
 // and how many were accepted or rejected by the checks below.
 static uint16_t dmm_diag_frames;
 static uint16_t dmm_diag_accepted;
+// The last frame taken and what parse_frame made of it:
+// 0 accepted, 1 bad header, 2 undecodable digits, 3 number without unit,
+// 4 text the firmware does not know, 5 not valid for the current mode.
+static uint8_t dmm_diag_frame[DMM_FRAME_LEN];
+static uint8_t dmm_diag_status;
+
+void dmm_diag_last_frame(uint8_t out[9], uint8_t *status) {
+    for (uint8_t i = 0; i < DMM_FRAME_LEN; ++i) {
+        out[i] = dmm_diag_frame[i];
+    }
+    *status = dmm_diag_status;
+}
 
 void dmm_diag_counters(uint16_t *frames, uint16_t *accepted) {
     *frames = dmm_diag_frames;
@@ -668,22 +680,30 @@ static uint8_t parse_frame(const uint8_t frame[DMM_FRAME_LEN]) {
     uint8_t new_numeric;
     uint8_t changed;
 
+    for (uint8_t i = 0; i < DMM_FRAME_LEN; ++i) {
+        dmm_diag_frame[i] = frame[i];
+    }
+    dmm_diag_status = 1;
     if (frame[0] != 0x5Au || frame[1] != 0xA5u) {
         return 0;
     }
     uint8_t new_fahrenheit = format_unit(frame[6], frame[7], frame[8], new_unit);
+    dmm_diag_status = 2;
     if (!format_value(frame, new_unit, new_value)) {
         return 0;
     }
     new_numeric = parse_fixed_units(new_value, &new_fixed);
+    dmm_diag_status = 3;
     if (new_numeric) {
         if (!new_unit[0] && dmm_current_mode != 6u && dmm_current_mode != 4u) {
             return 0;
         }
     } else if (!text_equal(new_value, "AUTO") && !text_equal(new_value, "OPEN") &&
                !text_equal(new_value, "L1UE") && !text_equal(new_value, "00L0")) {
+        dmm_diag_status = 4;
         return 0;
     }
+    dmm_diag_status = 5;
     // A well-formed old-mode packet still confirms the UART clock, but must not change the display.
     dmm_baud_locked = 1;
     if (!dmm_reading_compatible(new_value, new_unit, new_numeric)) {
@@ -691,6 +711,7 @@ static uint8_t parse_frame(const uint8_t frame[DMM_FRAME_LEN]) {
     }
 
     ++dmm_diag_accepted;
+    dmm_diag_status = 0;
     changed = (uint8_t)(!dmm_valid || !text_equal(new_value, dmm_value) ||
                         !text_equal(new_unit, dmm_unit) || new_fahrenheit != dmm_unit_fahrenheit);
     text_copy(dmm_value, new_value, sizeof(dmm_value));

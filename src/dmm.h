@@ -26,3 +26,4 @@ uint8_t dmm_live_wire_active(void);
 uint8_t dmm_diode_continuity_active(void);
 void dmm_uart_irq_handler(void);
 void dmm_diag_counters(uint16_t *frames, uint16_t *accepted);
+void dmm_diag_last_frame(uint8_t out[9], uint8_t *status);
