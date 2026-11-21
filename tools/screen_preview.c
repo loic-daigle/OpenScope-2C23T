@@ -7,6 +7,10 @@
 #include <stdio.h>
 #include <string.h>
 
+#ifndef SCREEN_PREVIEW_DIR
+#define SCREEN_PREVIEW_DIR "build/preview"
+#endif
+
 #define __asm__
 #define volatile(...)
 #define dmm_current_mode dmm_wire_mode
@@ -16,47 +20,10 @@
 #undef __asm__
 #include "../src/ui.c"
 #include "../src/font.c"
+#include "host_display.h"
 #include "../src/gfx.c"
 #include "../src/ui_fonts.c"
 #include "../src/fft.c"
-
-static uint16_t fb[LCD_WIDTH * LCD_HEIGHT];
-
-uint8_t lcd_collecting(void) { return 0; }
-void lcd_mark_dirty(uint16_t x, uint16_t y, uint16_t w, uint16_t h) { (void)x; (void)y; (void)w; (void)h; }
-void lcd_pixel(int16_t x, int16_t y, uint16_t c) {
-    if (x >= 0 && y >= 0 && x < (int16_t)LCD_WIDTH && y < (int16_t)LCD_HEIGHT) fb[y * LCD_WIDTH + x] = c;
-}
-void lcd_rect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t c) {
-    for (uint32_t j = y; j < (uint32_t)y + h && j < LCD_HEIGHT; ++j)
-        for (uint32_t i = x; i < (uint32_t)x + w && i < LCD_WIDTH; ++i) fb[j * LCD_WIDTH + i] = c;
-}
-void lcd_fill(uint16_t c) { lcd_rect(0, 0, LCD_WIDTH, LCD_HEIGHT, c); }
-void lcd_frame(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t c) {
-    lcd_rect(x, y, w, 1, c); lcd_rect(x, (uint16_t)(y + h - 1), w, 1, c);
-    lcd_rect(x, y, 1, h, c); lcd_rect((uint16_t)(x + w - 1), y, 1, h, c);
-}
-void lcd_line(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t c) { gfx_line(x0, y0, x1, y1, 1, c, c); }
-// The legacy 5x7 font, drawn exactly like display.c does.
-static void old_char(uint16_t x, uint16_t y, char c, uint16_t fg, int32_t bg, uint8_t sc) {
-    const uint8_t *g = font5x7_get(c);
-    if (bg >= 0) lcd_rect(x, y, (uint16_t)(6u * sc), (uint16_t)(8u * sc), (uint16_t)bg);
-    for (uint8_t r = 0; r < 7; ++r)
-        for (uint8_t col = 0; col < 5; ++col)
-            if (g[col] & (1u << r)) lcd_rect((uint16_t)(x + col * sc), (uint16_t)(y + r * sc), sc, sc, fg);
-}
-void lcd_text(uint16_t x, uint16_t y, const char *t, uint16_t fg, uint16_t bg, uint8_t sc) {
-    for (; *t; ++t, x = (uint16_t)(x + 6u * sc)) old_char(x, y, *t, fg, bg, sc);
-}
-void lcd_text_transparent(uint16_t x, uint16_t y, const char *t, uint16_t fg, uint8_t sc) {
-    for (; *t; ++t, x = (uint16_t)(x + 6u * sc)) old_char(x, y, *t, fg, -1, sc);
-}
-void lcd_text_center(uint16_t x, uint16_t y, uint16_t w, const char *t, uint16_t fg, uint16_t bg, uint8_t sc) {
-    uint16_t tw = (uint16_t)(strlen(t) * 6u * sc);
-    lcd_text(tw >= w ? x : (uint16_t)(x + (w - tw) / 2u), y, t, fg, bg, sc);
-}
-uint16_t lcd_text_width(const char *t, uint8_t s) { return (uint16_t)(strlen(t) * 6u * s); }
-void lcd_render(lcd_render_fn_t fn, void *ctx) { fn(ctx); }
 
 static uint8_t batt_pct = 87;
 uint8_t battery_percent(void) { return batt_pct; }
@@ -74,13 +41,13 @@ uint8_t arb_file_count(void) { return 0; }
 const char *arb_file_name(uint8_t index) { (void)index; return ""; }
 
 static void save(const char *name) {
-    char path[128];
-    snprintf(path, sizeof(path), "build/preview/%s.ppm", name);
+    char path[sizeof(SCREEN_PREVIEW_DIR) + 64];
+    snprintf(path, sizeof(path), SCREEN_PREVIEW_DIR "/%s.ppm", name);
     FILE *f = fopen(path, "wb");
     if (!f) { perror(path); return; }
     fprintf(f, "P6\n%u %u\n255\n", LCD_WIDTH, LCD_HEIGHT);
     for (uint32_t i = 0; i < LCD_WIDTH * LCD_HEIGHT; ++i) {
-        uint16_t c = fb[i];
+        uint16_t c = frame_buffer[i];
         uint8_t rgb[3] = {(uint8_t)(((c >> 11) & 31) * 255 / 31), (uint8_t)(((c >> 5) & 63) * 255 / 63),
                           (uint8_t)((c & 31) * 255 / 31)};
         fwrite(rgb, 1, 3, f);
@@ -108,7 +75,11 @@ static void feed(uint8_t mode, const char digits[4], unsigned dots, uint8_t pref
 }
 
 static void enter(uint8_t mode) {
-    dmm_wire_mode = ui.dmm_mode = mode;
+    uint8_t choice;
+    uint8_t group = dmm_mode_group(mode, &choice);
+    if (group < DMM_GROUP_COUNT) dmm_group_choice[group] = choice;
+    dmm_wire_mode = dmm_wire_mode_for_ui(mode);
+    ui.dmm_mode = mode;
     ui.mode = UI_MODE_DMM;
     ui.overlay = UI_OVERLAY_NONE;
     ui.auto_range = 1;
@@ -154,6 +125,7 @@ static void shot(const char *name) {
 }
 
 int main(void) {
+    host_display_begin_render();
     // ---- Multimeter: every state the reading card can be in ----
     // Frames go through the real decoder; flags as in tests/dmm.c:
     // dots bit 0 = minus sign, bit n = decimal point before digit n.
@@ -172,11 +144,6 @@ int main(void) {
     enter(DMM_MODE_DCV);
     feed(1, "0003", 8, 0, 0, 2);
     shot("dmm-04-dc-voltage-near-zero");
-
-    enter(DMM_MODE_DCV);
-    ui.auto_range = 0;
-    feed(1, "0503", 4, 0, 0, 2);
-    shot("dmm-05-manual-range");
 
     enter(DMM_MODE_DCV);
     feed(1, "4520", 4, 0, 0, 2);
@@ -249,8 +216,8 @@ int main(void) {
     feed(8, "0238", 8, 0, 0, 0x20);
     shot("dmm-21-temperature-c");
 
-    enter(DMM_MODE_TEMP);
-    feed(8, "0748", 8, 0, 0, 0x10);
+    enter(DMM_MODE_TEMP_F);
+    feed(8, "0238", 8, 0, 0, 0x20);
     shot("dmm-22-temperature-f");
 
     enter(DMM_MODE_AC_HI_CURR);
